@@ -1,10 +1,2 @@
-torch
-transformers>=4.45.0
-accelerate
 bitsandbytes
-datasets
-opencv-python
-scikit-learn
-Pillow
-tqdm
 qwen-vl-utils
