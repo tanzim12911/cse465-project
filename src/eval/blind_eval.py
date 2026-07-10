@@ -1,7 +1,7 @@
 import os
 import torch
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 
 def load_model_and_processor(model_id="Qwen/Qwen2.5-VL-7B-Instruct"):
@@ -16,7 +16,7 @@ def load_model_and_processor(model_id="Qwen/Qwen2.5-VL-7B-Instruct"):
         bnb_4bit_use_double_quant=True,
     )
     
-    model = AutoModelForCausalLM.from_pretrained(
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_id,
         device_map="auto",
         quantization_config=quantization_config,

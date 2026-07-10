@@ -2,9 +2,10 @@ import os
 import sys
 import torch
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 from datasets import load_from_disk
+import json
 
 # Add src to path to import router
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +23,7 @@ def load_model_and_processor(model_id="Qwen/Qwen2.5-VL-7B-Instruct"):
         bnb_4bit_use_double_quant=True,
     )
     
-    model = AutoModelForCausalLM.from_pretrained(
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_id,
         device_map="auto",
         quantization_config=quantization_config,
@@ -36,12 +37,30 @@ def run_bullseye_evaluation(model, processor, dataset_split, num_samples=None):
     """
     dispatcher = BullsEyeDispatcher(taxonomy_path="./src/router/taxonomy_map.json")
     
+    output_file = "./data/bullseye_results.jsonl"
+    os.makedirs("./data", exist_ok=True)
+    processed_ids = set()
     correct = 0
     total = 0
     
+    # Checkpointing: load already processed items
+    if os.path.exists(output_file):
+        with open(output_file, 'r') as f:
+            for line in f:
+                data = json.loads(line)
+                processed_ids.add(data.get('id'))
+                if data.get('correct'):
+                    correct += 1
+                total += 1
+    
     samples = dataset_split if num_samples is None else dataset_split.select(range(min(num_samples, len(dataset_split))))
     
-    for item in tqdm(samples, desc="BullsEye Evaluating"):
+    for idx, item in enumerate(tqdm(samples, desc="BullsEye Evaluating")):
+        # Generate a stable ID if the dataset doesn't have one
+        item_id = str(item.get("id", item.get("question_id", idx)))
+        if item_id in processed_ids:
+            continue
+            
         original_image = item.get("image")
         question = item.get("question")
         options = item.get("options", [])
@@ -94,10 +113,22 @@ def run_bullseye_evaluation(model, processor, dataset_split, num_samples=None):
             prediction = output_text.strip()[0].upper() if len(output_text.strip()) > 0 else "N/A"
             
         ground_truth = chr(65 + answer_idx) if isinstance(answer_idx, int) else answer_idx
+        is_correct = (prediction == ground_truth)
         
-        if prediction == ground_truth:
+        if is_correct:
             correct += 1
         total += 1
+        
+        # Save checkpoint
+        result_dict = {
+            "id": item_id,
+            "task": task_name,
+            "prediction": prediction,
+            "ground_truth": ground_truth,
+            "correct": is_correct
+        }
+        with open(output_file, 'a') as f:
+            f.write(json.dumps(result_dict) + "\n")
         
     accuracy = correct / total if total > 0 else 0
     print(f"BullsEye Accuracy: {accuracy*100:.2f}% ({correct}/{total})")

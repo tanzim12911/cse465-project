@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 from datasets import load_from_disk
 
@@ -77,7 +77,7 @@ def extract_and_save_features(model_id="Qwen/Qwen2.5-VL-7B-Instruct", dataset_pa
         bnb_4bit_use_double_quant=True,
     )
     
-    model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", quantization_config=quantization_config)
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(model_id, device_map="auto", quantization_config=quantization_config)
     processor = AutoProcessor.from_pretrained(model_id)
     
     extractor = FeatureExtractor(model)
