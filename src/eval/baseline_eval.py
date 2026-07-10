@@ -7,6 +7,25 @@ from qwen_vl_utils import process_vision_info
 from tqdm import tqdm
 import json
 
+def parse_answer(answer_field):
+    """
+    Normalizes the answer field to a single uppercase letter.
+    Handles all formats seen in ColorBench:
+      int  0        → "A"
+      str  "(A)"    → "A"
+      str  "A"      → "A"
+      str  "A."     → "A"
+    """
+    if isinstance(answer_field, int):
+        return chr(65 + answer_field)
+    s = str(answer_field).strip().upper()
+    # Extract first A-Z letter found
+    for ch in s:
+        if ch.isalpha():
+            return ch
+    return s
+
+
 def load_model_and_processor(model_id):
     print(f"Loading {model_id} in 4-bit...")
     quantization_config = BitsAndBytesConfig(
@@ -83,7 +102,7 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
                                                   clean_up_tokenization_spaces=False)[0]
 
         prediction   = output_text.strip()[0].upper() if output_text.strip() else "N/A"
-        ground_truth = chr(65 + answer_idx) if isinstance(answer_idx, int) else str(answer_idx)
+        ground_truth = parse_answer(answer_idx)
         is_correct   = (prediction == ground_truth)
 
         task_stats.setdefault(task_name, {'correct': 0, 'total': 0})
