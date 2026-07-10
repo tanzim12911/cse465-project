@@ -2,7 +2,7 @@ import os
 import sys
 import torch
 import random
-from datasets import load_from_disk
+from datasets import load_from_disk, load_dataset
 from qwen_vl_utils import process_vision_info
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
 
@@ -11,8 +11,13 @@ from router.dispatcher import BullsEyeDispatcher
 
 def run_demo():
     print("Loading Dataset...")
-    dataset = load_from_disk("./data/colorbench")
-    eval_data = dataset[list(dataset.keys())[0]]
+    try:
+        dataset = load_from_disk("./data/colorbench")
+        eval_data = dataset[list(dataset.keys())[0]]
+    except Exception as e:
+        print("Dataset not found locally, downloading from HuggingFace...")
+        dataset = load_dataset("umd-zhou-lab/ColorBench")
+        eval_data = dataset[list(dataset.keys())[0]]
     
     print("Loading Model in 4-bit...")
     quantization_config = BitsAndBytesConfig(
