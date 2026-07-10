@@ -228,10 +228,93 @@ def run_custom_demo(model_id, output_dir):
     print(f"\nFull results saved to: {results_file}")
 
 
+def run_custom_demo_inline(model, processor, output_dir):
+    """
+    Called directly from the notebook with an already-loaded model.
+    No weight reload — reuses whatever is in GPU memory.
+    """
+    dispatcher = BullsEyeDispatcher()
+    os.makedirs(output_dir, exist_ok=True)
+    results_file = os.path.join(output_dir, "custom_demo_results.txt")
+
+    baseline_correct = 0
+    bullseye_correct = 0
+    total = len(CUSTOM_SAMPLES)
+    lines = []
+
+    sep = "=" * 65
+    lines += [sep, "  BULLSEYE vs BASELINE — CUSTOM IMAGE DEMO",
+              f"  Model: {model.config._name_or_path}", sep]
+
+    for idx, sample in enumerate(CUSTOM_SAMPLES):
+        image_path = sample["image_path"]
+        task_name  = sample["task"]
+        question   = sample["question"]
+        options    = sample["options"]
+        answer_idx = sample["answer"]
+
+        if not os.path.exists(image_path):
+            msg = f"[Example {idx+1}] Image not found: {image_path} — skipping."
+            print(msg); lines.append(msg); continue
+
+        image        = Image.open(image_path).convert("RGB")
+        options_text = "\n".join([f"{chr(65+i)}. {opt}" for i, opt in enumerate(options)])
+        base_prompt  = f"{question}\n{options_text}\nAnswer with just the letter of the correct option."
+        ground_truth = chr(65 + answer_idx)
+
+        block = [f"\n--- Example {idx+1}: {task_name} ---",
+                 f"Question : {question}", f"Options  :\n{options_text}",
+                 f"Answer   : {ground_truth}"]
+
+        base_out  = infer(model, processor, image, base_prompt, 10)
+        base_pred = parse_prediction(base_out)
+        base_ok   = base_pred == ground_truth
+        if base_ok: baseline_correct += 1
+
+        block += ["", "  [BASELINE — zero-shot, no intervention]",
+                  f"  Raw output : {base_out}",
+                  f"  Prediction : {base_pred}  →  {'✓ CORRECT' if base_ok else '✗ WRONG'}"]
+
+        modified_image, modified_prompt = dispatcher.dispatch(task_name, image, base_prompt)
+        max_tok  = 200 if "step by step" in modified_prompt else 10
+        bull_out  = infer(model, processor, modified_image, modified_prompt, max_tok)
+        bull_pred = parse_prediction(bull_out)
+        bull_ok   = bull_pred == ground_truth
+        if bull_ok: bullseye_correct += 1
+
+        branch = dispatcher.taxonomy_map.get(task_name, "normalization")
+        block += ["", f"  [BULLSEYE — branch: {branch}]",
+                  f"  Raw output : {bull_out[:300]}{'...' if len(bull_out)>300 else ''}",
+                  f"  Prediction : {bull_pred}  →  {'✓ CORRECT' if bull_ok else '✗ WRONG'}"]
+
+        if not base_ok and bull_ok:
+            block.append("  *** IMPROVEMENT: BullsEye fixed this one! ***")
+        elif base_ok and not bull_ok:
+            block.append("  !! REGRESSION: BullsEye broke this one.")
+        else:
+            block.append("  (No change in outcome)")
+
+        block.append("-" * 65)
+        for line in block: print(line)
+        lines.extend(block)
+
+    delta = bullseye_correct - baseline_correct
+    sign  = "+" if delta >= 0 else ""
+    summary = ["", sep, "  SUMMARY", sep,
+               f"  Baseline : {baseline_correct}/{total}  ({baseline_correct/total*100:.0f}%)",
+               f"  BullsEye : {bullseye_correct}/{total}  ({bullseye_correct/total*100:.0f}%)",
+               f"  Delta    : {sign}{delta}  ({sign}{delta/total*100:.0f}%)", sep]
+    for line in summary: print(line)
+    lines.extend(summary)
+
+    with open(results_file, "w") as f:
+        f.write("\n".join(lines))
+    print(f"\nSaved to: {results_file}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_id",   type=str, default="Qwen/Qwen2.5-VL-7B-Instruct")
-    parser.add_argument("--output_dir", type=str, default="./data",
-                        help="Where to save results. Use /content/drive/MyDrive/bullseye for Colab Drive.")
+    parser.add_argument("--output_dir", type=str, default="./data")
     args = parser.parse_args()
     run_custom_demo(args.model_id, args.output_dir)
