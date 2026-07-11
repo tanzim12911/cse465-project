@@ -150,13 +150,32 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
 
     # Per-task summary
     print("\n--- Baseline Per-Task Accuracy ---")
+    per_task_summary = {}
     for task, stats in sorted(task_stats.items()):
         acc = stats['correct'] / stats['total'] * 100 if stats['total'] > 0 else 0
         print(f"  {task:<25}: {acc:.1f}%  ({stats['correct']}/{stats['total']})")
+        per_task_summary[task] = {
+            "accuracy": round(acc, 2),
+            "correct": stats['correct'],
+            "total": stats['total'],
+        }
 
     overall = correct / total * 100 if total > 0 else 0
     print(f"\nOverall Baseline Accuracy: {overall:.2f}%  ({correct}/{total})")
     print(f"Results saved to: {output_file}")
+
+    # Save summary JSON
+    summary = {
+        "overall_accuracy": round(overall, 2),
+        "overall_correct": correct,
+        "overall_total": total,
+        "per_task": per_task_summary,
+    }
+    summary_file = os.path.join(output_dir, "baseline_summary.json")
+    with open(summary_file, 'w') as f:
+        json.dump(summary, f, indent=2)
+    print(f"Summary saved to:  {summary_file}")
+
     return overall, task_stats
 
 
