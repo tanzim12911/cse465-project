@@ -101,6 +101,10 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
             output_text = processor.batch_decode(trimmed, skip_special_tokens=True,
                                                   clean_up_tokenization_spaces=False)[0]
 
+        # Free GPU memory immediately
+        del inputs, generated_ids
+        torch.cuda.empty_cache()
+
         prediction   = output_text.strip()[0].upper() if output_text.strip() else "N/A"
         ground_truth = parse_answer(answer_idx)
         is_correct   = (prediction == ground_truth)

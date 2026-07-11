@@ -98,6 +98,9 @@ def run_bullseye_evaluation(model, processor, dataset_split, output_dir, num_sam
             output_text = processor.batch_decode(trimmed, skip_special_tokens=True,
                                                   clean_up_tokenization_spaces=False)[0]
 
+        del inputs, generated_ids
+        torch.cuda.empty_cache()
+
         prediction = "N/A"
         if "Final Answer:" in output_text:
             after = output_text.split("Final Answer:")[-1].strip()
