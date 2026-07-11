@@ -26,29 +26,26 @@ class FeatureExtractor:
 
     def _register_hooks(self):
         registered = []
-        # Vision encoder / projector output
         try:
             self.hooks.append(
-                model.visual.register_forward_hook(self._get_hook("vision_encoder"))
+                self.model.visual.register_forward_hook(self._get_hook("vision_encoder"))
             )
             registered.append("vision_encoder")
         except AttributeError:
             pass
 
-        # Middle LLM layer
         try:
-            mid = len(model.model.layers) // 2
+            mid = len(self.model.model.layers) // 2
             self.hooks.append(
-                model.model.layers[mid].register_forward_hook(self._get_hook("llm_mid"))
+                self.model.model.layers[mid].register_forward_hook(self._get_hook("llm_mid"))
             )
             registered.append("llm_mid")
         except AttributeError:
             pass
 
-        # Final LLM layer
         try:
             self.hooks.append(
-                model.model.layers[-1].register_forward_hook(self._get_hook("llm_out"))
+                self.model.model.layers[-1].register_forward_hook(self._get_hook("llm_out"))
             )
             registered.append("llm_out")
         except AttributeError:
