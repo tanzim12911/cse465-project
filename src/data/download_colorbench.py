@@ -21,7 +21,6 @@ def download_and_prepare_dataset(save_dir="./data/colorbench", max_samples=None)
                 "umd-zhou-lab/ColorBench",
                 split="test",
                 streaming=True,
-                trust_remote_code=True,
             )
             # Convert the head of the stream to a regular Dataset
             from datasets import Dataset
@@ -36,7 +35,7 @@ def download_and_prepare_dataset(save_dir="./data/colorbench", max_samples=None)
             dataset = DatasetDict({"test": dataset})
         else:
             # Full download
-            dataset = load_dataset("umd-zhou-lab/ColorBench", trust_remote_code=True)
+            dataset = load_dataset("umd-zhou-lab/ColorBench")
 
         print(f"Dataset loaded. Splits: {list(dataset.keys())}")
         os.makedirs(save_dir, exist_ok=True)
