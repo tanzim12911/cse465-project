@@ -100,7 +100,9 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
         image_inputs, video_inputs = process_vision_info(messages)
         inputs = processor(
             text=[text], images=image_inputs, videos=video_inputs,
-            padding=True, return_tensors="pt"
+            padding=True, return_tensors="pt",
+            min_pixels=256*28*28,
+            max_pixels=512*28*28,
         ).to(model.device)
 
         with torch.no_grad():
