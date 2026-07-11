@@ -80,6 +80,14 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
         answer_idx = item.get("answer")
         task_name  = item.get("task", "Unknown")
 
+        # Resize large images to prevent OOM on high-res inputs
+        if image is not None and hasattr(image, 'size'):
+            max_side = 672  # safe limit for T4 16GB with 3B model
+            w, h = image.size
+            if max(w, h) > max_side:
+                scale = max_side / max(w, h)
+                image = image.resize((int(w*scale), int(h*scale)))
+
         options_text = "\n".join([f"{chr(65+i)}. {opt}" for i, opt in enumerate(options)])
         prompt = f"{question}\n{options_text}\nAnswer with just the letter of the correct option."
 
