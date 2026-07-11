@@ -80,6 +80,11 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
         answer_idx = item.get("answer")
         task_name  = item.get("task", "Unknown")
 
+        # Skip items with no image — they produce invalid tensors
+        if image is None:
+            print(f"[WARN] Skipping item {item_id}: image is None")
+            continue
+
         # Resize large images to prevent OOM on high-res inputs
         if image is not None and hasattr(image, 'size'):
             max_side = 672  # safe limit for T4 16GB with 3B model
@@ -105,15 +110,25 @@ def run_zero_shot_evaluation(model, processor, dataset_split, output_dir, num_sa
             max_pixels=512*28*28,
         ).to(model.device)
 
-        with torch.no_grad():
-            generated_ids = model.generate(**inputs, max_new_tokens=10)
-            trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
-            output_text = processor.batch_decode(trimmed, skip_special_tokens=True,
-                                                  clean_up_tokenization_spaces=False)[0]
-
-        # Free GPU memory immediately
-        del inputs, generated_ids
-        torch.cuda.empty_cache()
+        try:
+            with torch.no_grad():
+                # Use greedy decoding (do_sample=False) to avoid torch.multinomial
+                # crashing on NaN/Inf logits from bad inputs.
+                generated_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=10,
+                    do_sample=False,
+                )
+                trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
+                output_text = processor.batch_decode(trimmed, skip_special_tokens=True,
+                                                      clean_up_tokenization_spaces=False)[0]
+        except Exception as e:
+            print(f"[ERROR] Skipping item {item_id} due to generation error: {e}")
+            output_text = ""
+        finally:
+            # Free GPU memory immediately
+            del inputs
+            torch.cuda.empty_cache()
 
         prediction   = output_text.strip()[0].upper() if output_text.strip() else "N/A"
         ground_truth = parse_answer(answer_idx)
