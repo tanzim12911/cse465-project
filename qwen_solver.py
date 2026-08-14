@@ -134,6 +134,61 @@ class QwenSolver:
         prediction = self._parse_option_letter(output_text)
         return output_text, prediction
 
+    def generate_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        image: Optional[Image.Image] = None,
+        max_new_tokens: int = 256,
+    ) -> str:
+        """Generate text/JSON using Qwen2.5-VL for skill generation and reflection."""
+        self.load_model()
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        user_content = []
+        if image is not None:
+            user_content.append({"type": "image", "image": image})
+        user_content.append({"type": "text", "text": user_prompt})
+        messages.append({"role": "user", "content": user_content})
+
+        text = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+        if image is not None:
+            image_inputs, video_inputs = process_vision_info(messages)
+        else:
+            image_inputs, video_inputs = None, None
+
+        inputs = self.processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(self.model.device)
+
+        with torch.no_grad():
+            generated_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+            )
+
+        trimmed = [
+            out_ids[len(in_ids):]
+            for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_text = self.processor.batch_decode(
+            trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0]
+
+        self.clear_memory()
+        return output_text
+
     @staticmethod
     def _parse_option_letter(text: str) -> str:
         """Extract choice option letter (A)-(E) from model output."""

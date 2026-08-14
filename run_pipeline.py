@@ -65,7 +65,7 @@ def run_adaptive_skills(ace_system, solver, item, iterations=2):
     image = item["image"]
 
     # --- Iteration 1: Generate initial skill ---
-    plan = ace_system.generate_skill(question, choices)
+    plan = ace_system.generate_skill(question, choices, image=image)
     skill = plan.get("skill", "")
     classification = plan.get("classification", "unknown")
 
@@ -92,6 +92,7 @@ def run_adaptive_skills(ace_system, solver, item, iterations=2):
             prev_skill=skill,
             prev_answer=prediction,
             prev_raw_output=raw_output,
+            image=image,
         )
         skill = refined_plan.get("skill", skill)
         reflection = refined_plan.get("reflection", "")
@@ -137,8 +138,9 @@ def main():
 
     logger = IncrementalLogger(output_path)
     loader = ColorBenchDataLoader(task_filter=args.task)
-    ace_system = ACE() if args.mode == "adaptive_skills" else None
     solver = QwenSolver()
+    solver.load_model()
+    ace_system = ACE(solver=solver) if args.mode == "adaptive_skills" else None
 
     correct, total = 0, 0
     start = time.time()
