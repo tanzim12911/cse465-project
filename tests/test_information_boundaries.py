@@ -148,15 +148,46 @@ class TestInformationBoundaries(unittest.TestCase):
         self.assertTrue(o_indices.isdisjoint(e_indices))
 
     def test_candidate_selection_zero_target_gt(self):
-        """Verify candidate selection uses only VerifierScore and iteration index."""
+        """Verify candidate selection uses only VerifierScore and deterministic non-GT tie-breaking."""
         history = [
             {"iteration": 1, "skill": "Skill 1", "verifier_score": 0.50, "target_prediction": "(A)"},
-            {"iteration": 2, "skill": "Skill 2", "verifier_score": 0.80, "target_prediction": "(B)"},
-            {"iteration": 3, "skill": "Skill 3", "verifier_score": 0.80, "target_prediction": "(C)"},
+            {"iteration": 2, "skill": "A very long detailed Skill 2", "verifier_score": 0.80, "target_prediction": "(B)"},
+            {"iteration": 3, "skill": "Short Skill 3", "verifier_score": 0.80, "target_prediction": "(C)"},
         ]
         best_skill, best_rec = ACE._select_best_candidate(history)
-        self.assertEqual(best_skill, "Skill 2")
-        self.assertEqual(best_rec["iteration"], 2)
+        # Short Skill 3 is chosen because it is shorter than Skill 2 (conciseness bias)
+        self.assertEqual(best_skill, "Short Skill 3")
+        self.assertEqual(best_rec["iteration"], 3)
+        self.assertTrue(best_rec["tie_occurred"])
+
+    def test_candidate_selection_expansion_tie_breaker(self):
+        """Verify tie-breaking on unused private validation examples without target GT."""
+        history = [
+            {"iteration": 1, "skill": "Skill A", "verifier_score": 0.67, "passed_tests": 2, "total_verifier_tests": 3, "target_prediction": "(A)"},
+            {"iteration": 2, "skill": "Skill B", "verifier_score": 0.67, "passed_tests": 2, "total_verifier_tests": 3, "target_prediction": "(B)"},
+        ]
+        # Verifier pool with 5 examples (3 initially used, 2 unused for tie-breaking)
+        verifier_pool = [
+            {"question": f"Q{i}", "choices": ["(A)", "(B)"], "answer": "(A)", "image": None}
+            for i in range(5)
+        ]
+        # Mock solver where Skill B gets Q3 and Q4 right (predicts A), while Skill A gets them wrong
+        class TieSolver:
+            def solve(self, image, question, choices, mode, skill):
+                if skill == "Skill B":
+                    return {"prediction": "(A)"}
+                return {"prediction": "(B)"}
+
+        best_skill, best_rec = ACE._select_best_candidate(
+            iteration_history=history,
+            verifier_pool=verifier_pool,
+            solver=TieSolver(),
+            initially_evaluated_count=3,
+        )
+        self.assertEqual(best_skill, "Skill B")
+        self.assertEqual(best_rec["target_prediction"], "(B)")
+        self.assertTrue(best_rec["tie_occurred"])
+        self.assertTrue(best_rec["tie_broken_via_expansion"])
 
     def test_full_gvo_pipeline_execution(self):
         """Integration test: Verify complete GVO orchestration flow and boundary integrity."""

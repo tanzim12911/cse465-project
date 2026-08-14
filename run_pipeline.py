@@ -131,13 +131,9 @@ def main():
 
     print(f"[Pipeline] Loaded {len(all_items)} total instances for task '{args.task}'.")
 
-    # Partition dataset if running G-V or G-V-O modes
-    if mode in ["gen_verifier", "gen_verifier_oracle"]:
-        verifier_pool, oracle_suite, eval_instances = partition_task_dataset(all_items)
-        print(f"[Pipeline] Partitioned: {len(verifier_pool)} Verifier pool, {len(oracle_suite)} Oracle suite, {len(eval_instances)} Evaluation stream.")
-    else:
-        verifier_pool, oracle_suite = [], []
-        eval_instances = all_items
+    # Partition dataset deterministically across all modes (zero-leakage guarantee)
+    verifier_pool, oracle_suite, eval_instances = partition_task_dataset(all_items)
+    print(f"[Pipeline] Partitioned: {len(verifier_pool)} Verifier pool, {len(oracle_suite)} Oracle suite, {len(eval_instances)} Evaluation stream.")
 
     solver = QwenSolver()
     solver.load_model()
@@ -198,6 +194,11 @@ def main():
             "is_correct": is_correct,
             "mode": mode,
             "skill": result.get("skill"),
+            "selected_iteration": result.get("selected_iteration"),
+            "tie_occurred": result.get("tie_occurred"),
+            "tie_broken_via_expansion": result.get("tie_broken_via_expansion"),
+            "verifier_score_progression": result.get("verifier_score_progression"),
+            "verifier_improved": result.get("verifier_improved"),
             "oracle_verdict": result.get("oracle_verdict"),
             "oracle_accuracy": result.get("oracle_accuracy"),
             "oracle_retries": result.get("oracle_retries"),

@@ -7,9 +7,10 @@ Uses the supervisor's exact mandated prompt phrasing:
 
 import re
 import gc
+import hashlib
 import torch
 from PIL import Image
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from config import QWEN_MODEL_ID, QUANTIZATION_CONFIG, SOLVER_MAX_NEW_TOKENS
 
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
@@ -17,13 +18,24 @@ from qwen_vl_utils import process_vision_info
 
 
 class QwenSolver:
-    """Phase 2 Local VLM Solver with 4-bit Quantization."""
+    """Phase 2 Local VLM Solver with 4-bit Quantization and Inference Caching."""
 
     def __init__(self, model_id: str = QWEN_MODEL_ID):
         self.model_id = model_id
         self.model = None
         self.processor = None
         self._is_loaded = False
+        self._cache: Dict[Tuple[str, str, str, Tuple[str, ...], str, str], Dict[str, Any]] = {}
+
+    @staticmethod
+    def _hash_image(image: Optional[Image.Image]) -> str:
+        """Deterministic hash of PIL Image for caching."""
+        if image is None:
+            return "no_image"
+        try:
+            return hashlib.sha256(image.tobytes()).hexdigest()
+        except Exception:
+            return f"{getattr(image, 'size', '')}_{getattr(image, 'mode', '')}"
 
     def load_model(self):
         """Lazy load model and processor in 4-bit precision."""
@@ -56,6 +68,17 @@ class QwenSolver:
         skill: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Solve a visual question. Modes: 'baseline' or 'adaptive_skills'."""
+        cache_key = (
+            self.model_id,
+            self._hash_image(image),
+            question.strip(),
+            tuple(c.strip() for c in choices),
+            skill.strip() if skill else "",
+            mode,
+        )
+        if cache_key in self._cache:
+            return self._cache[cache_key].copy()
+
         self.load_model()
 
         # Format choices
@@ -84,12 +107,14 @@ class QwenSolver:
         raw_text, prediction = self._generate(image, prompt_text)
         self.clear_memory()
 
-        return {
+        result = {
             "prediction": prediction,
             "raw_output": raw_text,
             "prompt_used": prompt_text,
             "mode": mode,
         }
+        self._cache[cache_key] = result
+        return result.copy()
 
     def _generate(self, image: Image.Image, prompt_text: str):
         """Execute Qwen2.5-VL forward pass."""

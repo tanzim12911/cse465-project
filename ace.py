@@ -132,7 +132,12 @@ class ACE:
                     break
 
             # 2. Candidate Selection (Purely based on VerifierScore, zero target GT used)
-            best_skill, best_record = self._select_best_candidate(iteration_history)
+            best_skill, best_record = self._select_best_candidate(
+                iteration_history=iteration_history,
+                verifier_pool=verifier_pool,
+                solver=self.solver,
+                initially_evaluated_count=current_test_size,
+            )
             best_prediction = best_record["target_prediction"]
 
             # 3. Oracle Hidden Generalization Evaluation (Fixed 5-example suite)
@@ -166,9 +171,14 @@ class ACE:
                     "Enforce stricter visual invariance and penalize over-specialized directives."
                 )
 
+        verifier_scores = [r.get("verifier_score", 0.0) for r in iteration_history]
         return {
             "prediction": best_prediction,
             "skill": best_skill,
+            "selected_iteration": best_record.get("iteration", 1),
+            "tie_occurred": best_record.get("tie_occurred", False),
+            "tie_broken_via_expansion": best_record.get("tie_broken_via_expansion", False),
+            "verifier_score_progression": verifier_scores,
             "oracle_verdict": oracle_verdict,
             "oracle_accuracy": oracle_acc,
             "oracle_retries": len(all_oracle_attempts) - 1,
@@ -240,36 +250,107 @@ class ACE:
             if verifier_score == 1.0:
                 break
 
-        best_skill, best_record = self._select_best_candidate(iteration_history)
+        best_skill, best_record = self._select_best_candidate(
+            iteration_history=iteration_history,
+            verifier_pool=verifier_pool,
+            solver=self.solver,
+            initially_evaluated_count=3,
+        )
 
+        verifier_scores = [r.get("verifier_score", 0.0) for r in iteration_history]
         return {
             "prediction": best_record["target_prediction"],
             "skill": best_skill,
+            "selected_iteration": best_record.get("iteration", 1),
+            "tie_occurred": best_record.get("tie_occurred", False),
+            "tie_broken_via_expansion": best_record.get("tie_broken_via_expansion", False),
+            "verifier_score_progression": verifier_scores,
+            "verifier_improved": len(verifier_scores) > 1 and verifier_scores[-1] > verifier_scores[0],
             "iterations": iteration_history,
         }
 
     @staticmethod
-    def _select_best_candidate(iteration_history: List[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
+    def _select_best_candidate(
+        iteration_history: List[Dict[str, Any]],
+        verifier_pool: Optional[List[Dict[str, Any]]] = None,
+        solver: Any = None,
+        initially_evaluated_count: int = 3,
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Deterministic Candidate Selection:
-        Primary key: Highest VerifierScore on validation suite.
-        Tie-breaker: Earliest iteration index.
+        1. Primary key: Highest VerifierScore on initial validation suite.
+        2. If unique winner: Return immediately (+0 VLM calls).
+        3. If tie: Evaluate ONLY tied candidates on unused validation examples from verifier_pool.
+        4. Select highest expanded-suite VerifierScore.
+        5. If still tied after all available validation examples:
+           Deterministic non-GT fallback:
+             a) Shorter/conciser skill text length (avoids verbose hallucinations).
+             b) Later iteration index (incorporates latest diagnostic feedback).
         ZERO target ground truth is used.
         """
-        best_record = None
-        best_score = -1.0
-        best_iteration = 999
+        if not iteration_history:
+            raise ValueError("iteration_history cannot be empty.")
 
-        for record in iteration_history:
-            score = record.get("verifier_score", 0.0)
-            k = record.get("iteration", 1)
+        max_score = max(r.get("verifier_score", 0.0) for r in iteration_history)
+        tied_candidates = [r for r in iteration_history if r.get("verifier_score", 0.0) == max_score]
 
-            if (score > best_score) or (score == best_score and k < best_iteration):
-                best_score = score
-                best_iteration = k
-                best_record = record
+        tie_occurred = len(tied_candidates) > 1
+        tie_broken_via_expansion = False
 
-        if best_record is None and iteration_history:
-            best_record = iteration_history[-1]
+        if len(tied_candidates) == 1:
+            best_record = tied_candidates[0].copy()
+            best_record["tie_occurred"] = False
+            best_record["tie_broken_via_expansion"] = False
+            return best_record["skill"], best_record
+
+        # Conditional tie-breaking with unused validation examples from verifier_pool
+        if verifier_pool and solver and len(verifier_pool) > initially_evaluated_count:
+            unused_tests = verifier_pool[initially_evaluated_count:]
+            if unused_tests:
+                tie_broken_via_expansion = True
+                candidate_expanded_scores = []
+                for cand in tied_candidates:
+                    skill = cand["skill"]
+                    extra_passed = 0
+                    for test_item in unused_tests:
+                        sol_res = solver.solve(
+                            image=test_item["image"],
+                            question=test_item["question"],
+                            choices=test_item["choices"],
+                            mode="adaptive_skills",
+                            skill=skill,
+                        )
+                        pred = sol_res.get("prediction", "")
+                        gt = test_item.get("answer", "")
+                        if pred.strip().upper() == gt.strip().upper():
+                            extra_passed += 1
+
+                    initial_passed = cand.get(
+                        "passed_tests",
+                        int(cand.get("verifier_score", 0.0) * cand.get("total_verifier_tests", initially_evaluated_count)),
+                    )
+                    total_tests = cand.get("total_verifier_tests", initially_evaluated_count) + len(unused_tests)
+                    expanded_score = (initial_passed + extra_passed) / total_tests
+                    candidate_expanded_scores.append((expanded_score, cand))
+
+                max_exp_score = max(score for score, _ in candidate_expanded_scores)
+                tied_candidates = [cand for score, cand in candidate_expanded_scores if score == max_exp_score]
+
+        if len(tied_candidates) == 1:
+            best_record = tied_candidates[0].copy()
+            best_record["tie_occurred"] = tie_occurred
+            best_record["tie_broken_via_expansion"] = tie_broken_via_expansion
+            return best_record["skill"], best_record
+
+        # Deterministic non-GT fallback:
+        # 1. Shorter skill text (conciseness)
+        # 2. Later iteration index (incorporates latest feedback)
+        best_candidate = min(
+            tied_candidates,
+            key=lambda r: (len(r.get("skill", "")), -r.get("iteration", 1)),
+        )
+        best_record = best_candidate.copy()
+        best_record["tie_occurred"] = tie_occurred
+        best_record["tie_broken_via_expansion"] = tie_broken_via_expansion
 
         return best_record["skill"], best_record
