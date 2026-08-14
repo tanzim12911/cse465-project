@@ -19,6 +19,10 @@ QUANTIZATION_CONFIG = {
 }
 SOLVER_MAX_NEW_TOKENS = 256
 
+# Image resolution bounds to cap visual tokens and prevent attention OOM on T4
+MIN_PIXELS = 256 * 28 * 28
+MAX_PIXELS = 1280 * 28 * 28
+
 # ==============================================================================
 # Dataset & Paths
 # ==============================================================================

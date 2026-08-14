@@ -10,7 +10,13 @@ import gc
 import torch
 from PIL import Image
 from typing import List, Dict, Any, Optional
-from config import QWEN_MODEL_ID, QUANTIZATION_CONFIG, SOLVER_MAX_NEW_TOKENS
+from config import (
+    QWEN_MODEL_ID,
+    QUANTIZATION_CONFIG,
+    SOLVER_MAX_NEW_TOKENS,
+    MIN_PIXELS,
+    MAX_PIXELS,
+)
 
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
@@ -31,6 +37,7 @@ class QwenSolver:
             return
 
         print(f"[Qwen Solver] Loading {self.model_id} in 4-bit NF4 precision...")
+        print(f"[Qwen Solver] Image resolution bounds: min_pixels={MIN_PIXELS}, max_pixels={MAX_PIXELS}")
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=QUANTIZATION_CONFIG["load_in_4bit"],
             bnb_4bit_compute_dtype=getattr(torch, QUANTIZATION_CONFIG["bnb_4bit_compute_dtype"]),
@@ -43,7 +50,11 @@ class QwenSolver:
             device_map="auto",
             torch_dtype=torch.float16,
         )
-        self.processor = AutoProcessor.from_pretrained(self.model_id)
+        self.processor = AutoProcessor.from_pretrained(
+            self.model_id,
+            min_pixels=MIN_PIXELS,
+            max_pixels=MAX_PIXELS,
+        )
         self._is_loaded = True
         print("[Qwen Solver] Model loaded successfully.")
 
