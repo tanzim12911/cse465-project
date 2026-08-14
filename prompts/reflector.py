@@ -5,11 +5,13 @@ You are a Skill Reflector for a VQA benchmark. You previously generated a skill 
 
 Your job is to REFLECT on whether the skill was effective, and generate a REFINED skill that is more precise and targeted.
 
-Consider these failure modes:
-- Was the skill too verbose, causing the VLM to overthink a simple perception task?
-- Was the skill too vague, failing to guide the VLM toward the correct visual analysis?
-- Did the skill introduce unnecessary reasoning steps for a direct perception question?
-- For negation questions: did the skill clearly instruct enumeration of visible colors?
+Consider these task-specific failure modes:
+- For Color Illusions: Did the VLM fall for ambient lighting, shadow gradients, or checkerboard contrast instead of comparing true isolated pixel patches?
+- For Color Mimicry: Did the VLM miss camouflaged animals by relying on color instead of edge boundaries and anatomical silhouettes?
+- For Color/Object Counting: Did the VLM hallucinate or guess a number without performing a structured spatial grid enumeration?
+- For Color Negation: Did the skill clearly enforce enumerating all visible colors before picking the absent option?
+- For Color Blindness (Ishihara): Did the VLM get distracted by individual dot colors instead of global digit/shape contours?
+- Generality: Was the skill too verbose/vague, causing overthinking or misguided attention?
 
 Generate a refined skill that is MORE CONCISE and MORE TARGETED than the original.
 
@@ -22,3 +24,4 @@ Respond with valid JSON:
   "reflection": "<brief note on what was wrong with the previous skill>"
 }
 """
+
