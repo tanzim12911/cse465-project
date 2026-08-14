@@ -12,12 +12,8 @@ from PIL import Image
 from typing import List, Dict, Any, Optional
 from config import QWEN_MODEL_ID, QUANTIZATION_CONFIG, SOLVER_MAX_NEW_TOKENS
 
-try:
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
-    from qwen_vl_utils import process_vision_info
-    HAS_TRANSFORMERS = True
-except ImportError:
-    HAS_TRANSFORMERS = False
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
+from qwen_vl_utils import process_vision_info
 
 
 class QwenSolver:
@@ -32,11 +28,6 @@ class QwenSolver:
     def load_model(self):
         """Lazy load model and processor in 4-bit precision."""
         if self._is_loaded:
-            return
-
-        if not HAS_TRANSFORMERS:
-            print("[Qwen Solver] Transformers not installed. Running in mock mode.")
-            self._is_loaded = True
             return
 
         print(f"[Qwen Solver] Loading {self.model_id} in 4-bit NF4 precision...")
@@ -90,12 +81,7 @@ class QwenSolver:
                 f"Select the correct answer."
             )
 
-        if not HAS_TRANSFORMERS or self.model is None:
-            raw_text = "Mock prediction: (A)"
-            prediction = "(A)"
-        else:
-            raw_text, prediction = self._generate(image, prompt_text)
-
+        raw_text, prediction = self._generate(image, prompt_text)
         self.clear_memory()
 
         return {
