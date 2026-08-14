@@ -1,29 +1,73 @@
+"""Reflector agent for Agentic Context Engineering (ACE)."""
+
 import json
 from typing import Dict, List, Any, Optional
 from PIL import Image
 
 from .base import BaseAgent
-from prompts.reflector import REFLECTOR_PROMPT
+from .playbook import Playbook
+from prompts.reflector import REFLECTOR_SYSTEM_PROMPT
+
 
 class Reflector(BaseAgent):
-    """Pass 2+ (Reflect & Refine): Evaluate previous answer and improve skill using local Qwen."""
+    """Reflector: Evaluates execution traces and distills reusable delta lessons."""
 
-    def reflect_and_refine(
+    def reflect(
         self,
         question: str,
         choices: List[str],
-        prev_skill: str,
-        prev_answer: str,
-        prev_raw_output: str,
+        trajectory: Dict[str, Any],
+        solver_prediction: str,
+        solver_raw_output: str,
         image: Optional[Image.Image] = None,
+        playbook: Optional[Playbook] = None,
     ) -> Dict[str, Any]:
-        """Reflect on the skill's effectiveness and generate a refined skill."""
-        prompt = (
-            f"Original Question: {question}\n"
-            f"Options: {json.dumps(choices)}\n\n"
-            f"Previous Skill Generated: {prev_skill}\n\n"
-            f"VLM's Answer: {prev_answer}\n"
-            f"VLM's Raw Output: {prev_raw_output[:300]}\n\n"
-            f"Reflect on the skill's effectiveness and generate a refined, more targeted skill."
+        """Critique the attempt and extract candidate delta updates."""
+        labels = ["A", "B", "C", "D", "E", "F"]
+        options_text = "\n".join(f"({labels[i]}) {c}" for i, c in enumerate(choices))
+
+        user_prompt_parts = []
+        if playbook and not playbook.is_empty():
+            user_prompt_parts.append(playbook.format_for_prompt())
+            user_prompt_parts.append("\n" + "=" * 40 + "\n")
+
+        user_prompt_parts.append(
+            f"Question: {question}\n"
+            f"Choices:\n{options_text}\n\n"
+            f"Generator's Visual Observations:\n{trajectory.get('visual_observations', 'None')}\n\n"
+            f"Generator's Trajectory:\n{trajectory.get('reasoning_trajectory', 'None')}\n\n"
+            f"Generator's Proposed Choice: {trajectory.get('proposed_choice', 'None')}\n\n"
+            f"Solver's Output: {solver_prediction}\n"
+            f"Solver's Trace: {solver_raw_output[:300]}\n\n"
+            f"Critique this attempt. Identify which existing bullets were helpful/harmful, and propose 1-2 concise delta candidate rules."
         )
-        return self._call_model(REFLECTOR_PROMPT, prompt, image=image)
+        user_prompt = "\n".join(user_prompt_parts)
+
+        raw_result = self._call_model(
+            system_prompt=REFLECTOR_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            image=image,
+            max_new_tokens=256,
+        )
+
+        # Normalize delta_candidates
+        delta_cands = raw_result.get("delta_candidates", [])
+        if isinstance(delta_cands, dict):
+            delta_cands = [delta_cands]
+        elif not isinstance(delta_cands, list):
+            delta_cands = []
+
+        clean_cands = []
+        for cand in delta_cands:
+            if isinstance(cand, dict) and "content" in cand:
+                clean_cands.append({
+                    "category": cand.get("category", "general_strategy").strip().lower(),
+                    "content": cand.get("content", "").strip(),
+                })
+
+        return {
+            "critique": raw_result.get("critique", ""),
+            "helpful_bullet_ids": raw_result.get("helpful_bullet_ids", []),
+            "harmful_bullet_ids": raw_result.get("harmful_bullet_ids", []),
+            "delta_candidates": clean_cands,
+        }

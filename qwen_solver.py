@@ -65,12 +65,11 @@ class QwenSolver:
         )
 
         # Build prompt based on mode
-        if mode == "adaptive_skills" and skill:
-            # Supervisor's EXACT mandated phrasing
+        if mode in ["ace", "adaptive_skills"] and skill:
             prompt_text = (
-                f"This is the skill to solve this question, "
+                f"This is the skill playbook to solve this question, "
                 f"now solve the question and give me the answer.\n\n"
-                f"Skill:\n{skill}\n\n"
+                f"{skill}\n\n"
                 f"Question: {question}\n"
                 f"Choices:\n{options_text}"
             )

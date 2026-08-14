@@ -1,4 +1,4 @@
-"""Evaluation and Comparative Report Script."""
+"""Evaluation and Comparative Report Script for ACE ColorBench Experiments."""
 
 import os
 import json
@@ -24,7 +24,7 @@ def load_jsonl(filepath: str) -> List[Dict[str, Any]]:
 
 
 def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate overall and fine-grained accuracy."""
+    """Calculate overall and pattern-specific accuracy."""
     if not records:
         return {}
 
@@ -41,17 +41,14 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             pat = "Negation (NOT present)"
         elif "what color is" in q or "what color are" in q or "what is the color" in q:
             pat = "Direct Object Color"
+        elif "how many" in q or "count" in q:
+            pat = "Counting / Quantity"
         else:
-            pat = "Other"
+            pat = "Perception / Illusion / Mimicry"
 
         pattern_stats[pat]["total"] += 1
         if is_corr:
             pattern_stats[pat]["correct"] += 1
-
-        if r.get("ground_truth") == "(E)":
-            pattern_stats["Option (E) No Answer"]["total"] += 1
-            if is_corr:
-                pattern_stats["Option (E) No Answer"]["correct"] += 1
 
     return {
         "total": total,
@@ -68,59 +65,60 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def print_report(filepath: str):
-    """Print detailed report for a single results file."""
-    records = load_jsonl(filepath)
-    if not records:
-        print(f"No records in {filepath}")
+def compare_baseline_vs_ace(results_dir: str = "./results"):
+    """Compare Baseline vs. ACE on identical held-out splits."""
+    heldout_files = glob.glob(os.path.join(results_dir, "results_*_heldout.jsonl"))
+    if not heldout_files:
+        print(f"No held-out results found in {results_dir}")
         return
 
-    mode = records[0].get("mode", "unknown")
-    task = records[0].get("task", "unknown")
-    m = analyze_records(records)
-
-    print("\n" + "=" * 65)
-    print(f"REPORT: {task} | Mode: {mode.upper()}")
-    print("=" * 65)
-    print(f"Overall: {m['correct']}/{m['total']} ({m['accuracy']:.2f}%)")
-    print("-" * 65)
-    print(f"{'Pattern':30s} | {'Score':15s} | {'Acc':8s}")
-    print("-" * 65)
-    for pat, pd in m["patterns"].items():
-        print(f"{pat:30s} | {pd['correct']:4d}/{pd['total']:4d}      | {pd['accuracy']:6.2f}%")
-    print("=" * 65)
-
-
-def compare_all(results_dir: str):
-    """Compare all experiment result files side-by-side."""
-    files = glob.glob(os.path.join(results_dir, "results_*.jsonl"))
-    if not files:
-        print(f"No results found in {results_dir}")
-        return
-
-    print("\n" + "=" * 65)
-    print("EXPERIMENT COMPARISON")
-    print("=" * 65)
-    print(f"{'Experiment':45s} | {'Accuracy':15s}")
-    print("-" * 65)
-
-    for fp in sorted(files):
+    # Group by task
+    task_results = defaultdict(dict)
+    for fp in heldout_files:
+        fname = os.path.basename(fp)
         recs = load_jsonl(fp)
-        if recs:
-            m = analyze_records(recs)
-            name = os.path.basename(fp).replace(".jsonl", "")
-            print(f"{name:45s} | {m['correct']:3d}/{m['total']:3d} ({m['accuracy']:.2f}%)")
+        if not recs:
+            continue
+        stats = analyze_records(recs)
+        
+        if "_baseline_" in fname:
+            task_name = fname.replace("results_", "").replace("_baseline_heldout.jsonl", "")
+            task_results[task_name]["baseline"] = stats
+        elif "_ace_" in fname:
+            task_name = fname.replace("results_", "").replace("_ace_heldout.jsonl", "")
+            task_results[task_name]["ace"] = stats
 
-    print("=" * 65)
+    print("\n" + "=" * 78)
+    print("CSE465 RESEARCH REPORT: BASELINE vs. ACE ON HELD-OUT COLORBENCH")
+    print("=" * 78)
+    print(f"{'Task / Benchmark Split':30s} | {'Baseline (Held-Out)':20s} | {'ACE (Held-Out)':20s} | {'Delta':7s}")
+    print("-" * 78)
+
+    for task, res in task_results.items():
+        base = res.get("baseline", {})
+        ace_res = res.get("ace", {})
+
+        base_str = f"{base.get('correct', 0)}/{base.get('total', 0)} ({base.get('accuracy', 0.0):.1f}%)" if base else "N/A"
+        ace_str = f"{ace_res.get('correct', 0)}/{ace_res.get('total', 0)} ({ace_res.get('accuracy', 0.0):.1f}%)" if ace_res else "N/A"
+
+        delta_str = "N/A"
+        if base and ace_res:
+            delta = ace_res.get("accuracy", 0.0) - base.get("accuracy", 0.0)
+            delta_str = f"{delta:+.1f}%"
+
+        clean_title = task.replace("_", " ").title()
+        print(f"{clean_title:30s} | {base_str:20s} | {ace_str:20s} | {delta_str:7s}")
+
+    print("=" * 78)
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--file", type=str, default=None)
     parser.add_argument("--dir", type=str, default="./results")
     args = parser.parse_args()
 
-    if args.file:
-        print_report(args.file)
-    else:
-        compare_all(args.dir)
+    compare_baseline_vs_ace(args.dir)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,199 @@
+"""ACE Playbook data structure, serialization, and deterministic update utilities."""
+
+import os
+import json
+import re
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass, field, asdict
+
+
+@dataclass
+class PlaybookBullet:
+    """Itemized context unit adhering to ACE Section 3.1."""
+    bullet_id: str
+    category: str
+    content: str
+    helpful_count: int = 0
+    harmful_count: int = 0
+    source_step: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PlaybookBullet":
+        return cls(
+            bullet_id=data.get("bullet_id", ""),
+            category=data.get("category", "general"),
+            content=data.get("content", "").strip(),
+            helpful_count=int(data.get("helpful_count", 0)),
+            harmful_count=int(data.get("harmful_count", 0)),
+            source_step=data.get("source_step"),
+        )
+
+
+class Playbook:
+    """
+    Persistent structured context playbook for Agentic Context Engineering (ACE).
+    
+    Contains itemized bullets, version tracking, and deterministic grow-and-refine
+    operations (addition, counter attribution, deduplication).
+    """
+
+    def __init__(self, task: str = "general"):
+        self.task: str = task
+        self.version: int = 1
+        self.bullets: Dict[str, PlaybookBullet] = {}
+        self._next_id_counter: int = 1
+
+    def is_empty(self) -> bool:
+        return len(self.bullets) == 0
+
+    def get_prefix(self) -> str:
+        clean = re.sub(r"[^a-zA-Z]", "", self.task).upper()[:5]
+        return clean if clean else "CTX"
+
+    def add_bullet(
+        self,
+        category: str,
+        content: str,
+        source_step: Optional[int] = None,
+        bullet_id: Optional[str] = None,
+        dedup_threshold: float = 0.65,
+    ) -> Optional[str]:
+        """
+        Add a new bullet to the playbook if not duplicate.
+        Returns the assigned bullet_id if added, or None if skipped as duplicate.
+        """
+        content_clean = content.strip()
+        if not content_clean or len(content_clean) < 10:
+            return None
+
+        # Check for near-duplicate content
+        for existing in self.bullets.values():
+            if self._compute_similarity(content_clean, existing.content) >= dedup_threshold:
+                # Increment helpfulness of existing bullet if candidate reinforces it
+                existing.helpful_count += 1
+                return existing.bullet_id
+
+        if not bullet_id:
+            prefix = self.get_prefix()
+            bullet_id = f"{prefix}-{self._next_id_counter:03d}"
+            self._next_id_counter += 1
+
+        bullet = PlaybookBullet(
+            bullet_id=bullet_id,
+            category=category.strip().lower(),
+            content=content_clean,
+            helpful_count=0,
+            harmful_count=0,
+            source_step=source_step,
+        )
+        self.bullets[bullet_id] = bullet
+        self.version += 1
+        return bullet_id
+
+    def update_bullet_content(self, bullet_id: str, new_content: str):
+        """Update the content of an existing bullet."""
+        if bullet_id in self.bullets:
+            self.bullets[bullet_id].content = new_content.strip()
+            self.version += 1
+
+    def mark_helpful(self, bullet_ids: List[str]):
+        """Increment helpful counter for specified bullet IDs."""
+        for b_id in bullet_ids:
+            if b_id in self.bullets:
+                self.bullets[b_id].helpful_count += 1
+
+    def mark_harmful(self, bullet_ids: List[str]):
+        """Increment harmful counter for specified bullet IDs."""
+        for b_id in bullet_ids:
+            if b_id in self.bullets:
+                self.bullets[b_id].harmful_count += 1
+
+    def format_for_prompt(self) -> str:
+        """
+        Render structured context for inclusion in Generator or Solver prompt.
+        Clean, itemized, non-monolithic format.
+        """
+        if not self.bullets:
+            return ""
+
+        lines = ["[ACE Context Playbook - Accumulated Domain Strategies]"]
+        
+        # Group by category
+        categories: Dict[str, List[PlaybookBullet]] = {}
+        for b in self.bullets.values():
+            categories.setdefault(b.category, []).append(b)
+
+        for cat, b_list in categories.items():
+            lines.append(f"\n# Category: {cat.replace('_', ' ').title()}")
+            for b in b_list:
+                stats = f"[+ {b.helpful_count}/- {b.harmful_count}]" if (b.helpful_count or b.harmful_count) else ""
+                lines.append(f"- [{b.bullet_id}] {b.content} {stats}".strip())
+
+        return "\n".join(lines)
+
+    def format_as_markdown(self) -> str:
+        """Generate full human-readable markdown table of the playbook."""
+        lines = [
+            f"# ACE Playbook: {self.task}",
+            f"**Version:** {self.version} | **Total Bullets:** {len(self.bullets)}\n",
+            "| ID | Category | Strategy / Insight | Helpful (+) | Harmful (-) | Step |",
+            "| :--- | :--- | :--- | :---: | :---: | :---: |",
+        ]
+        for b in self.bullets.values():
+            lines.append(
+                f"| `{b.bullet_id}` | {b.category} | {b.content} | {b.helpful_count} | {b.harmful_count} | {b.source_step or '-'} |"
+            )
+        return "\n".join(lines)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "task": self.task,
+            "version": self.version,
+            "next_id_counter": self._next_id_counter,
+            "bullets": {k: b.to_dict() for k, b in self.bullets.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Playbook":
+        pb = cls(task=data.get("task", "general"))
+        pb.version = int(data.get("version", 1))
+        pb._next_id_counter = int(data.get("next_id_counter", 1))
+        bullets_data = data.get("bullets", {})
+        for k, b_data in bullets_data.items():
+            pb.bullets[k] = PlaybookBullet.from_dict(b_data)
+        return pb
+
+    def save(self, json_filepath: str):
+        """Save JSON representation and accompanying Markdown file."""
+        os.makedirs(os.path.dirname(os.path.abspath(json_filepath)), exist_ok=True)
+        with open(json_filepath, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+        
+        md_filepath = os.path.splitext(json_filepath)[0] + ".md"
+        with open(md_filepath, "w", encoding="utf-8") as f:
+            f.write(self.format_as_markdown() + "\n")
+
+    @classmethod
+    def load(cls, json_filepath: str) -> "Playbook":
+        if not os.path.exists(json_filepath):
+            return cls()
+        with open(json_filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
+
+    @staticmethod
+    def _compute_similarity(text1: str, text2: str) -> float:
+        """Token-level Jaccard similarity for lightweight deduplication on T4."""
+        def tokenize(t: str) -> set:
+            words = re.findall(r"\b\w{3,}\b", t.lower())
+            return set(words)
+        s1 = tokenize(text1)
+        s2 = tokenize(text2)
+        if not s1 or not s2:
+            return 0.0
+        intersection = len(s1.intersection(s2))
+        union = len(s1.union(s2))
+        return intersection / union if union > 0 else 0.0

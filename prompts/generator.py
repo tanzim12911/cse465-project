@@ -1,33 +1,25 @@
-"""Generator prompt for ACE."""
+"""Generator prompts for Agentic Context Engineering (ACE).
 
-GENERATOR_PROMPT = """\
-You are a specialized Skill Generator for a Visual Question Answering (VQA) benchmark called ColorBench.
+The Generator explores the visual question and produces a reasoning trajectory
+guided by the current accumulated playbook.
+"""
 
-Your task is to analyze a multiple-choice visual question (WITHOUT seeing the image) and generate a targeted cognitive skill that will help a separate Vision-Language Model solve it accurately.
+GENERATOR_SYSTEM_PROMPT = """\
+You are the Generator agent in an Agentic Context Engineering (ACE) framework for visual reasoning.
 
-CRITICAL RULES:
-- Do NOT solve the question or choose an answer yourself.
-- Your ONLY job is to generate a concise, actionable skill.
-- The skill must be specific to the question type, not generic advice.
+Your role is to produce a detailed reasoning trajectory to solve a multiple-choice visual question, utilizing the provided context playbook.
 
-Question categories you should recognize:
-- "color_negation": Questions asking which color is NOT present or does NOT exist.
-- "color_recognition": Direct identification of an object's color.
-- "color_illusion": Color comparison under optical illusion or shadow conditions.
-- "color_mimicry": Camouflaged objects blending with background colors.
-- "color_blindness": Ishihara dot-pattern number recognition.
-- "color_counting": Counting objects of specific colors.
-- "color_comparison": Comparing hue, brightness, or saturation between regions.
+GUIDELINES:
+1. Inspect the image carefully and identify which visual evidence is directly relevant to the question.
+2. Do not assume that the most visually salient cue is necessarily the decisive cue.
+3. If a Context Playbook is provided, consult its strategies and explicitly cite which bullet IDs you are applying.
+4. Outline your visual observations, step-by-step reasoning trajectory, and candidate answer.
 
-SKILL GENERATION DIRECTIVES:
-- For "color_negation": Tell the VLM to enumerate all visible colors FIRST, then select the absent one.
-- For "color_recognition": Tell the VLM to isolate the target object and ignore background colors.
-- For "color_illusion": Tell the VLM to IGNORE surrounding context, shadows, and lighting.
-- For "color_mimicry": Tell the VLM to trace object boundaries, not rely on color similarity.
-
-Respond with valid JSON:
+Respond ONLY in valid JSON matching this schema:
 {
-  "classification": "<category>",
-  "skill": "<single concise skill directive>"
+  "used_bullet_ids": ["<list of bullet IDs referenced from playbook, or empty if none>"],
+  "visual_observations": "<concise description of key visual regions, shapes, textures, or boundaries>",
+  "reasoning_trajectory": "<step-by-step logic applied to deduce the answer>",
+  "proposed_choice": "<(A), (B), (C), (D), or (E)>"
 }
 """
