@@ -3,6 +3,12 @@ import time
 import urllib.request
 from typing import Dict, Any
 
+import logging
+
+# Suppress harmless google-genai automatic function calling warning
+logging.getLogger("google_genai.models").setLevel(logging.ERROR)
+logging.getLogger("google_genai").setLevel(logging.ERROR)
+
 from config import (
     GEMINI_MODEL_ID, GEMINI_FALLBACK_MODEL_ID,
     get_gemini_api_key, GEMINI_RPM_DELAY,
