@@ -15,7 +15,12 @@ class PlaybookBullet:
     content: str
     helpful_count: int = 0
     harmful_count: int = 0
+    refinement_count: int = 0
     source_step: Optional[int] = None
+
+    def is_suppressed(self) -> bool:
+        """Conservative suppression: hide from active prompt if harmful exceeds helpful by >= 2."""
+        return (self.harmful_count - self.helpful_count) >= 2
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -28,6 +33,7 @@ class PlaybookBullet:
             content=data.get("content", "").strip(),
             helpful_count=int(data.get("helpful_count", 0)),
             harmful_count=int(data.get("harmful_count", 0)),
+            refinement_count=int(data.get("refinement_count", 0)),
             source_step=data.get("source_step"),
         )
 
@@ -37,7 +43,7 @@ class Playbook:
     Persistent structured context playbook for Agentic Context Engineering (ACE).
     
     Contains itemized bullets, version tracking, and deterministic grow-and-refine
-    operations (addition, counter attribution, deduplication).
+    operations (addition, refinement, counter attribution, deduplication, suppression).
     """
 
     def __init__(self, task: str = "general"):
@@ -72,7 +78,7 @@ class Playbook:
         # Check for near-duplicate content
         for existing in self.bullets.values():
             if self._compute_similarity(content_clean, existing.content) >= dedup_threshold:
-                # Increment helpfulness of existing bullet if candidate reinforces it
+                # Reinforce existing bullet if candidate is nearly identical
                 existing.helpful_count += 1
                 return existing.bullet_id
 
@@ -87,17 +93,50 @@ class Playbook:
             content=content_clean,
             helpful_count=0,
             harmful_count=0,
+            refinement_count=0,
             source_step=source_step,
         )
         self.bullets[bullet_id] = bullet
         self.version += 1
         return bullet_id
 
-    def update_bullet_content(self, bullet_id: str, new_content: str):
-        """Update the content of an existing bullet."""
-        if bullet_id in self.bullets:
-            self.bullets[bullet_id].content = new_content.strip()
-            self.version += 1
+    def update_bullet(
+        self,
+        bullet_id: str,
+        new_content: str,
+        new_category: Optional[str] = None,
+        source_step: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        In-place refinement (UPDATE) of an existing bullet.
+        Preserves historical helpful/harmful counts and increments refinement_count.
+        """
+        if bullet_id not in self.bullets:
+            return None
+
+        bullet = self.bullets[bullet_id]
+        prev_content = bullet.content
+        new_content_clean = new_content.strip()
+
+        if not new_content_clean or len(new_content_clean) < 10:
+            return None
+
+        bullet.content = new_content_clean
+        if new_category:
+            bullet.category = new_category.strip().lower()
+        bullet.refinement_count += 1
+        bullet.source_step = source_step
+        self.version += 1
+
+        return {
+            "bullet_id": bullet_id,
+            "prev_content": prev_content,
+            "new_content": new_content_clean,
+            "category": bullet.category,
+            "helpful_count": bullet.helpful_count,
+            "harmful_count": bullet.harmful_count,
+            "refinement_count": bullet.refinement_count,
+        }
 
     def mark_helpful(self, bullet_ids: List[str]):
         """Increment helpful counter for specified bullet IDs."""
@@ -111,19 +150,28 @@ class Playbook:
             if b_id in self.bullets:
                 self.bullets[b_id].harmful_count += 1
 
-    def format_for_prompt(self) -> str:
+    def get_suppressed_bullet_ids(self) -> List[str]:
+        """Return list of bullet IDs that are currently suppressed due to net negative utility."""
+        return [b.bullet_id for b in self.bullets.values() if b.is_suppressed()]
+
+    def format_for_prompt(self, max_active_bullets: int = 15) -> str:
         """
-        Render structured context for inclusion in Generator or Solver prompt.
-        Clean, itemized, non-monolithic format.
+        Render structured active context for inclusion in Generator or Solver prompt.
+        Filters out suppressed bullets and bounds active context to max_active_bullets.
         """
-        if not self.bullets:
+        active_bullets = [b for b in self.bullets.values() if not b.is_suppressed()]
+        if not active_bullets:
             return ""
+
+        # Limit to max_active_bullets, prioritizing higher net utility (helpful - harmful)
+        active_bullets.sort(key=lambda b: (b.helpful_count - b.harmful_count), reverse=True)
+        active_bullets = active_bullets[:max_active_bullets]
 
         lines = ["[ACE Context Playbook - Accumulated Domain Strategies]"]
         
         # Group by category
         categories: Dict[str, List[PlaybookBullet]] = {}
-        for b in self.bullets.values():
+        for b in active_bullets:
             categories.setdefault(b.category, []).append(b)
 
         for cat, b_list in categories.items():
@@ -135,16 +183,20 @@ class Playbook:
         return "\n".join(lines)
 
     def format_as_markdown(self) -> str:
-        """Generate full human-readable markdown table of the playbook."""
+        """Generate full human-readable markdown table of the playbook, including suppressed status."""
+        suppressed_count = sum(1 for b in self.bullets.values() if b.is_suppressed())
+        active_count = len(self.bullets) - suppressed_count
+
         lines = [
             f"# ACE Playbook: {self.task}",
-            f"**Version:** {self.version} | **Total Bullets:** {len(self.bullets)}\n",
-            "| ID | Category | Strategy / Insight | Helpful (+) | Harmful (-) | Step |",
-            "| :--- | :--- | :--- | :---: | :---: | :---: |",
+            f"**Version:** {self.version} | **Total Bullets:** {len(self.bullets)} (Active: {active_count}, Suppressed: {suppressed_count})\n",
+            "| ID | Category | Strategy / Insight | Helpful (+) | Harmful (-) | Refinements | Status | Step |",
+            "| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
         ]
         for b in self.bullets.values():
+            status = "⚠️ Suppressed" if b.is_suppressed() else "✅ Active"
             lines.append(
-                f"| `{b.bullet_id}` | {b.category} | {b.content} | {b.helpful_count} | {b.harmful_count} | {b.source_step or '-'} |"
+                f"| `{b.bullet_id}` | {b.category} | {b.content} | {b.helpful_count} | {b.harmful_count} | {b.refinement_count} | {status} | {b.source_step or '-'} |"
             )
         return "\n".join(lines)
 

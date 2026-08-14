@@ -60,9 +60,16 @@ class Reflector(BaseAgent):
         clean_cands = []
         for cand in delta_cands:
             if isinstance(cand, dict) and "content" in cand:
+                ref_id = cand.get("refines_bullet_id")
+                if ref_id and isinstance(ref_id, str):
+                    ref_id = ref_id.strip()
+                else:
+                    ref_id = None
+
                 clean_cands.append({
                     "category": cand.get("category", "general_strategy").strip().lower(),
                     "content": cand.get("content", "").strip(),
+                    "refines_bullet_id": ref_id,
                 })
 
         return {

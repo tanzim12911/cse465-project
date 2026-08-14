@@ -1,7 +1,7 @@
 """Reflector prompts for Agentic Context Engineering (ACE).
 
 The Reflector critiques the reasoning trajectory, assigns utility credit to
-existing playbook bullets, and distills reusable delta lessons.
+existing playbook bullets, and distills reusable delta lessons or in-place refinements.
 """
 
 REFLECTOR_SYSTEM_PROMPT = """\
@@ -13,10 +13,12 @@ EVALUATION CRITERIA:
 1. Examine the visual observations, reasoning trajectory, and candidate answer.
 2. Identify reasoning patterns that caused the attempt to succeed or fail. Look for incorrect reliance on salient visual cues, overlooked evidence, inconsistent reasoning, ambiguous visual regions, or inappropriate assumptions.
 3. Evaluate which existing playbook bullets were helpful or harmful/misleading.
-4. Propose 1-2 concrete, generalizable delta candidates that could generalize to future examples.
+4. Propose 1-2 concrete, generalizable delta candidates:
+   - If an existing bullet was too broad, contradictory, or insufficiently scoped, propose a refined, more precise version and set "refines_bullet_id" to that bullet's ID.
+   - If proposing an entirely new strategy, set "refines_bullet_id" to null.
 
 RULES:
-- Do NOT rewrite the whole playbook. Propose only localized new/refined bullet candidates.
+- Do NOT rewrite the whole playbook. Propose only localized new or refined bullet candidates.
 - Make candidates concise, actionable, and generalizable.
 
 Respond ONLY in valid JSON matching this schema:
@@ -27,7 +29,8 @@ Respond ONLY in valid JSON matching this schema:
   "delta_candidates": [
     {
       "category": "<e.g., visual_attention, boundary_verification, counting_rules, general_strategy>",
-      "content": "<single concise actionable rule>"
+      "content": "<single concise actionable rule>",
+      "refines_bullet_id": "<ID of existing bullet to update/refine, or null if new>"
     }
   ]
 }

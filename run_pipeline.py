@@ -149,7 +149,9 @@ def run_ace_pipeline(
         print(f"  Attempt Pred: {solver_pred} | GT: {gt} | {'[CORRECT]' if is_corr else '[WRONG]'}")
         print(f"  Critique: {adapt_record['reflection'].get('critique', '')}")
         print(f"  Bullets Added: {adapt_record['curation_report'].get('added_bullet_ids', [])}")
-        print(f"  Playbook Size: {adapt_record['total_bullets']} bullets (v{adapt_record['playbook_version']})")
+        print(f"  Bullets Refined (UPDATE): {adapt_record['curation_report'].get('updated_bullet_ids', [])}")
+        print(f"  Suppressed Bullets: {adapt_record['curation_report'].get('suppressed_bullet_ids', [])}")
+        print(f"  Playbook Size: {adapt_record['total_bullets']} bullets (Active: {adapt_record['curation_report'].get('active_bullets_count', adapt_record['total_bullets'])}, v{adapt_record['playbook_version']})")
 
         adapt_logger.log_result({
             "step": step_i + 1,
