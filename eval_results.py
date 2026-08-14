@@ -1,4 +1,4 @@
-"""Evaluation and Comparative Report Script."""
+"""Evaluation, Comparative Reporting, and GVO Telemetry Script."""
 
 import os
 import json
@@ -24,7 +24,7 @@ def load_jsonl(filepath: str) -> List[Dict[str, Any]]:
 
 
 def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate overall and fine-grained accuracy tailored to task type."""
+    """Calculate overall, fine-grained, and GVO-specific telemetry."""
     if not records:
         return {}
 
@@ -34,13 +34,15 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     pattern_stats = defaultdict(lambda: {"total": 0, "correct": 0})
     task_name = (records[0].get("task") or "").lower()
 
+    oracle_passes = sum(1 for r in records if r.get("oracle_verdict") == "PASS")
+    oracle_total = sum(1 for r in records if "oracle_verdict" in r and r.get("oracle_verdict") is not None)
+    total_retries = sum(r.get("oracle_retries", 0) for r in records if "oracle_retries" in r)
+
     for r in records:
         q = r.get("question", "").lower()
         is_corr = r.get("is_correct", False)
         gt = str(r.get("ground_truth", ""))
-        classification = r.get("classification") or ""
 
-        # Task-specific pattern categorizations
         if "illusion" in task_name or "illusion" in q:
             if any(w in q for w in ["shadow", "shade", "cylinder"]):
                 pat = "Shadow / Lighting Illusion"
@@ -54,7 +56,6 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             else:
                 pat = "Object / Pattern Mimicry"
         elif "counting" in task_name or "count" in q:
-            # Check if answer / count is small or large
             digits = [int(s) for s in q.split() if s.isdigit()]
             if digits and digits[0] <= 3:
                 pat = "Low Count (<= 3)"
@@ -66,7 +67,6 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             else:
                 pat = "Ishihara Shape/Pattern"
         else:
-            # Default / Color Recognition patterns
             if any(k in q for k in ["not present", "not exist", "does not exist", "not in", "which color does not"]):
                 pat = "Negation (NOT present)"
             elif "what color is" in q or "what color are" in q or "what is the color" in q:
@@ -78,7 +78,6 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         if is_corr:
             pattern_stats[pat]["correct"] += 1
 
-        # Track Option (E) / None of the above if applicable
         if gt in ["(E)", "E", "(E) None of the above"]:
             pattern_stats["Option (E) No Answer"]["total"] += 1
             if is_corr:
@@ -88,6 +87,10 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total": total,
         "correct": correct,
         "accuracy": (correct / total * 100) if total > 0 else 0.0,
+        "oracle_total": oracle_total,
+        "oracle_passes": oracle_passes,
+        "oracle_pass_rate": (oracle_passes / oracle_total * 100) if oracle_total > 0 else None,
+        "avg_oracle_retries": (total_retries / oracle_total) if oracle_total > 0 else 0.0,
         "patterns": {
             k: {
                 "total": v["total"],
@@ -97,7 +100,6 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             for k, v in pattern_stats.items()
         },
     }
-
 
 
 def print_report(filepath: str):
@@ -111,16 +113,19 @@ def print_report(filepath: str):
     task = records[0].get("task", "unknown")
     m = analyze_records(records)
 
-    print("\n" + "=" * 65)
+    print("\n" + "=" * 70)
     print(f"REPORT: {task} | Mode: {mode.upper()}")
-    print("=" * 65)
-    print(f"Overall: {m['correct']}/{m['total']} ({m['accuracy']:.2f}%)")
-    print("-" * 65)
-    print(f"{'Pattern':30s} | {'Score':15s} | {'Acc':8s}")
-    print("-" * 65)
+    print("=" * 70)
+    print(f"Overall Accuracy: {m['correct']}/{m['total']} ({m['accuracy']:.2f}%)")
+    if m["oracle_total"] > 0:
+        print(f"Oracle Generalization Passes: {m['oracle_passes']}/{m['oracle_total']} ({m['oracle_pass_rate']:.2f}%)")
+        print(f"Average Oracle Retries per Instance: {m['avg_oracle_retries']:.2f}")
+    print("-" * 70)
+    print(f"{'Pattern':35s} | {'Score':15s} | {'Acc':8s}")
+    print("-" * 70)
     for pat, pd in m["patterns"].items():
-        print(f"{pat:30s} | {pd['correct']:4d}/{pd['total']:4d}      | {pd['accuracy']:6.2f}%")
-    print("=" * 65)
+        print(f"{pat:35s} | {pd['correct']:4d}/{pd['total']:4d}      | {pd['accuracy']:6.2f}%")
+    print("=" * 70)
 
 
 def compare_all(results_dir: str):
@@ -130,20 +135,21 @@ def compare_all(results_dir: str):
         print(f"No results found in {results_dir}")
         return
 
-    print("\n" + "=" * 65)
-    print("EXPERIMENT COMPARISON")
-    print("=" * 65)
-    print(f"{'Experiment':45s} | {'Accuracy':15s}")
-    print("-" * 65)
+    print("\n" + "=" * 75)
+    print("EXPERIMENT COMPARISON MATRIX")
+    print("=" * 75)
+    print(f"{'Experiment':48s} | {'Accuracy':12s} | {'Oracle Pass':10s}")
+    print("-" * 75)
 
     for fp in sorted(files):
         recs = load_jsonl(fp)
         if recs:
             m = analyze_records(recs)
             name = os.path.basename(fp).replace(".jsonl", "")
-            print(f"{name:45s} | {m['correct']:3d}/{m['total']:3d} ({m['accuracy']:.2f}%)")
+            oracle_str = f"{m['oracle_pass_rate']:.1f}%" if m["oracle_pass_rate"] is not None else "N/A"
+            print(f"{name:48s} | {m['correct']:3d}/{m['total']:3d} ({m['accuracy']:5.2f}%) | {oracle_str:10s}")
 
-    print("=" * 65)
+    print("=" * 75)
 
 
 if __name__ == "__main__":

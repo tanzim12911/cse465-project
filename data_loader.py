@@ -1,10 +1,10 @@
-"""Data loader and crash-resilient Incremental Logger for ColorBench."""
+"""Data loader, dataset partitioner, and crash-resilient Incremental Logger for ColorBench."""
 
 import os
 import json
 import io
 from PIL import Image
-from typing import Dict, Any, Generator, Set
+from typing import Dict, Any, Generator, Set, List, Tuple
 from config import DATASET_NAME
 
 try:
@@ -47,6 +47,35 @@ class ColorBenchDataLoader:
                     "answer": row["answer"],
                     "image": img,
                 }
+
+
+def partition_task_dataset(
+    dataset_items: List[Dict[str, Any]],
+    verifier_size: int = 5,
+    oracle_size: int = 5,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Deterministically partitions a task dataset into:
+      1. Verifier Private Pool (verifier_size real instances, default 5)
+      2. Oracle Hidden Pool (oracle_size real instances, default 5)
+      3. Evaluation Stream (remaining instances >= 1)
+
+    Raises ValueError if total instances < verifier_size + oracle_size + 1 (i.e. < 11).
+    """
+    min_required = verifier_size + oracle_size + 1
+    total_count = len(dataset_items)
+    if total_count < min_required:
+        raise ValueError(
+            f"Insufficient dataset instances for GVO partitioning: "
+            f"Found {total_count} items, but require at least {min_required} "
+            f"({verifier_size} Verifier + {oracle_size} Oracle + >=1 Evaluation)."
+        )
+
+    verifier_pool = dataset_items[:verifier_size]
+    oracle_suite = dataset_items[verifier_size : verifier_size + oracle_size]
+    eval_instances = dataset_items[verifier_size + oracle_size :]
+
+    return verifier_pool, oracle_suite, eval_instances
 
 
 class IncrementalLogger:
