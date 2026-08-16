@@ -181,6 +181,20 @@ def run_ace_pipeline(
     print(f"Markdown: {os.path.splitext(playbook_json_path)[0]}.md")
     print("=" * 70)
 
+    # End-of-adaptation playbook audit — every persistent bullet with full stats
+    print("\n[ACE Phase 2: End-of-Adaptation Playbook Summary]")
+    print(f"{'ID':<12} {'H+':>4} {'H-':>4} {'Ref':>4} {'Status':<12} {'Step':>5}  Content")
+    print("-" * 100)
+    for bullet in ace_system.playbook.bullets.values():
+        status = "suppressed" if bullet.is_suppressed() else ("HIGH-UTIL" if bullet.is_high_utility() else "active")
+        step_str = str(bullet.source_step) if bullet.source_step is not None else "-"
+        content_preview = bullet.content[:70] + ("..." if len(bullet.content) > 70 else "")
+        print(
+            f"{bullet.bullet_id:<12} {bullet.helpful_count:>4} {bullet.harmful_count:>4} "
+            f"{bullet.refinement_count:>4} {status:<12} {step_str:>5}  {content_preview}"
+        )
+    print("-" * 100)
+
     # ---------------------------------------------------------
     # Phase 3: Evaluate Frozen Playbook on Held-Out Test Set
     # ---------------------------------------------------------

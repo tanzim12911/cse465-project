@@ -18,9 +18,30 @@ class PlaybookBullet:
     refinement_count: int = 0
     source_step: Optional[int] = None
 
+    def is_high_utility(self) -> bool:
+        """Bullet has a strong positive history warranting extra protection.
+
+        Invariant: a high-utility bullet must never be automatically suppressed
+        or overwritten by a single reflection.
+        """
+        return self.helpful_count >= 5 and (self.helpful_count - self.harmful_count) >= 4
+
     def is_suppressed(self) -> bool:
-        """Conservative suppression: hide from active prompt if harmful exceeds helpful by >= 2."""
-        return (self.harmful_count - self.helpful_count) >= 2
+        """Conservative suppression: deactivate bullet from Solver prompt only.
+
+        Conditions (ALL must hold):
+          - harmful_count - helpful_count >= 2   (net negative signal)
+          - harmful_count >= 3                   (minimum evidence floor)
+          - not high-utility                     (protects e.g. 8/1 bullets)
+
+        Suppression never deletes the bullet from persistent storage.
+        """
+        if self.is_high_utility():
+            return False
+        return (
+            (self.harmful_count - self.helpful_count) >= 2
+            and self.harmful_count >= 3
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
