@@ -15,13 +15,14 @@ EVALUATION CRITERIA:
    - If INCORRECT: identify which playbook bullets (if any) misled the reasoning or caused the wrong answer. Mark them as harmful. Propose a corrective rule.
    - If CORRECT: identify which playbook bullets helped guide the reasoning to the right answer. Mark them as helpful. Propose a reinforcing or generalizing rule.
 3. Identify the specific failure mode when incorrect:
+   - For Optical Illusion / Color Comparison tasks: Did the model default to "uniform/same" without checking for background-induced contrast? Surrounding gradients, luminance ramps, or shadow gradients can make a non-uniform bar appear uniform, or make identical patches look different. Propose rules that explicitly counter the "uniform/same" default bias. Do NOT use animal-specific language (fur, feathers, scales) in illusion task bullets.
    - For Camouflage / Mimicry tasks: Was the model deceived by surface color similarity? Did it miss subtle morphological contours (limbs, eyes, antennae, texture discontinuities)?
-   - For Optical Illusion / Color Comparison tasks: Did surrounding background luminance, gradients, or shadows distort the perceived color of target patches?
    - For Counting / Recognition tasks: Did overlapping regions, ambiguous boundaries, or partial occlusions cause over/under-counting?
 4. Propose 1-2 concrete, high-leverage delta candidates:
    - If an existing bullet was too broad, contradictory, or led to the wrong answer, propose a refined version and set "refines_bullet_id" to that bullet's ID.
    - If proposing a new visual strategy, set "refines_bullet_id" to null.
    - Do NOT propose new bullets that simply restate the correct answer for this specific image.
+   - Keep language domain-appropriate: for color illusion tasks focus on gradients, luminance, and background contrast; for mimicry tasks focus on contours, texture, and camouflage.
 
 STRATEGY FORMULATION GUIDELINES:
 - Focus on Reusable Visual Procedures: Explain what specific visual features to look for (e.g., "Inspect object contours and anatomical features rather than relying on color similarity alone", "Isolate target patches from surrounding background gradients before comparing hues").

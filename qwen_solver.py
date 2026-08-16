@@ -91,7 +91,10 @@ class QwenSolver:
                 f"{skill}\n\n"
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
-                f"Solve the question using the strategies above. State your final answer choice clearly as (A), (B), (C), (D), or (E)."
+                f"Use the strategies above to answer. "
+                f"IMPORTANT: For color comparison or uniformity questions, do NOT default to 'Yes/Same/Uniform' — "
+                f"actively look for gradient edges, luminance shifts, or background-induced contrast first. "
+                f"State your final answer as (A), (B), (C), (D), or (E) only."
             )
         else:  # baseline — direct VQA
             prompt_text = (
