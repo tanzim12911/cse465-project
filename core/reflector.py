@@ -21,10 +21,21 @@ class Reflector(BaseAgent):
         solver_raw_output: str,
         image: Optional[Image.Image] = None,
         playbook: Optional[Playbook] = None,
+        ground_truth: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Critique the attempt and extract candidate delta updates."""
         labels = ["A", "B", "C", "D", "E", "F"]
         options_text = "\n".join(f"({labels[i]}) {c}" for i, c in enumerate(choices))
+
+        # Determine outcome so the Reflector has an objective correctness signal
+        if ground_truth:
+            is_correct = (solver_prediction.strip().upper() == ground_truth.strip().upper())
+            outcome_line = (
+                f"Ground Truth: {ground_truth}\n"
+                f"Outcome: {'CORRECT ✓' if is_correct else 'INCORRECT ✗'}\n"
+            )
+        else:
+            outcome_line = "Ground Truth: (not provided)\n"
 
         user_prompt_parts = []
         if playbook and not playbook.is_empty():
@@ -37,9 +48,11 @@ class Reflector(BaseAgent):
             f"Generator's Visual Observations:\n{trajectory.get('visual_observations', 'None')}\n\n"
             f"Generator's Trajectory:\n{trajectory.get('reasoning_trajectory', 'None')}\n\n"
             f"Generator's Proposed Choice: {trajectory.get('proposed_choice', 'None')}\n\n"
-            f"Solver's Output: {solver_prediction}\n"
-            f"Solver's Trace: {solver_raw_output[:300]}\n\n"
-            f"Critique this attempt. Identify which existing bullets were helpful/harmful, and propose 1-2 concise delta candidate rules."
+            f"{outcome_line}\n"
+            f"Critique this attempt. If the answer was INCORRECT, identify which "
+            f"bullets misled the reasoning and mark them as harmful. If CORRECT, "
+            f"identify which bullets helped and mark them as helpful. "
+            f"Propose 1-2 concise delta candidate rules."
         )
         user_prompt = "\n".join(user_prompt_parts)
 

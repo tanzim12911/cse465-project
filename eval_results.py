@@ -67,9 +67,17 @@ def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def compare_baseline_vs_ace(results_dir: str = "./results"):
     """Compare Baseline vs. ACE on identical held-out splits."""
-    heldout_files = glob.glob(os.path.join(results_dir, "results_*_heldout.jsonl"))
+    # Search recursively so results in run-1/, run-2/, etc. are all found
+    heldout_files = glob.glob(
+        os.path.join(results_dir, "**", "results_*_heldout.jsonl"),
+        recursive=True,
+    )
+    # Also catch files directly in results_dir (flat layout)
+    heldout_files += glob.glob(os.path.join(results_dir, "results_*_heldout.jsonl"))
+    # Deduplicate while preserving order
+    heldout_files = list(dict.fromkeys(heldout_files))
     if not heldout_files:
-        print(f"No held-out results found in {results_dir}")
+        print(f"No held-out results found under {results_dir}")
         return
 
     # Group by task

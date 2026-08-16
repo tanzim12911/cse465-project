@@ -144,6 +144,7 @@ def run_ace_pipeline(
             choices=item["choices"],
             image=item["image"],
             step_index=step_i + 1,
+            ground_truth=item["answer"],
         )
 
         solver_pred = adapt_record["solver_prediction"]

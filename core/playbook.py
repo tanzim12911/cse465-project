@@ -87,10 +87,14 @@ class Playbook:
         source_step: Optional[int] = None,
         bullet_id: Optional[str] = None,
         dedup_threshold: float = 0.65,
+        reinforce_on_dedup: bool = False,
     ) -> Optional[str]:
         """
         Add a new bullet to the playbook if not duplicate.
-        Returns the assigned bullet_id if added, or None if skipped as duplicate.
+        Returns the assigned bullet_id if added (or matched), or None if rejected.
+
+        reinforce_on_dedup: if True, increment helpful_count on the matched
+        bullet (only pass True when the candidate comes from a successful outcome).
         """
         content_clean = content.strip()
         if not content_clean or len(content_clean) < 10:
@@ -99,8 +103,9 @@ class Playbook:
         # Check for near-duplicate content
         for existing in self.bullets.values():
             if self._compute_similarity(content_clean, existing.content) >= dedup_threshold:
-                # Reinforce existing bullet if candidate is nearly identical
-                existing.helpful_count += 1
+                # Only reinforce when the caller explicitly opts in (i.e. correct outcome)
+                if reinforce_on_dedup:
+                    existing.helpful_count += 1
                 return existing.bullet_id
 
         if not bullet_id:

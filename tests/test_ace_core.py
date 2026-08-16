@@ -23,26 +23,38 @@ class TestACECore(unittest.TestCase):
         self.assertEqual(pb.bullets[b1].helpful_count, 0)
         self.assertEqual(pb.bullets[b1].refinement_count, 0)
 
-        # Add near-duplicate candidate
+        # Near-duplicate WITHOUT reinforce_on_dedup — helpful_count must NOT change
         b2 = pb.add_bullet(
             category="boundary_verification",
             content="Inspect object contours and texture instead of relying on color similarity alone.",
             source_step=2,
             dedup_threshold=0.65,
+            reinforce_on_dedup=False,
         )
-        # Should deduplicate by returning existing bullet ID and incrementing helpful count
         self.assertEqual(b2, b1)
         self.assertEqual(len(pb.bullets), 1)
-        self.assertEqual(pb.bullets[b1].helpful_count, 1)
+        self.assertEqual(pb.bullets[b1].helpful_count, 0)  # no reinforce
+
+        # Near-duplicate WITH reinforce_on_dedup=True — helpful_count should increment
+        b3 = pb.add_bullet(
+            category="boundary_verification",
+            content="Inspect object contours and texture instead of relying on color similarity alone.",
+            source_step=3,
+            dedup_threshold=0.65,
+            reinforce_on_dedup=True,
+        )
+        self.assertEqual(b3, b1)
+        self.assertEqual(len(pb.bullets), 1)
+        self.assertEqual(pb.bullets[b1].helpful_count, 1)  # reinforced
 
         # Add distinct bullet
-        b3 = pb.add_bullet(
+        b4 = pb.add_bullet(
             category="counting_rules",
             content="When counting objects, explicitly verify if zero targets are present in the region.",
-            source_step=3,
+            source_step=4,
         )
-        self.assertIsNotNone(b3)
-        self.assertNotEqual(b3, b1)
+        self.assertIsNotNone(b4)
+        self.assertNotEqual(b4, b1)
         self.assertEqual(len(pb.bullets), 2)
 
     def test_inplace_update_and_refinement(self):

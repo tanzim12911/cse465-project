@@ -327,6 +327,7 @@ class Curator(BaseAgent):
             content=content,
             source_step=step_index,
             dedup_threshold=_OVERLAP_THRESHOLD,
+            reinforce_on_dedup=False,  # credit is managed via mark_helpful/mark_harmful
         )
 
         if res_id is None:
