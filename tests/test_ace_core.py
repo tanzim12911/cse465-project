@@ -105,6 +105,11 @@ class TestACECore(unittest.TestCase):
             source_step=1,
         )
 
+        # Pre-seed one prior harmful attribution so that after the reflection's
+        # harmful credit (+1) the bullet reaches harmful_count=2, satisfying
+        # the UPDATE evidence gate (requires >= 2 harmful attributions).
+        pb.mark_harmful([b1])
+
         curator = Curator(solver=None)
         reflection = {
             "critique": "The rule was applied too broadly without checking target boundaries.",
@@ -123,7 +128,8 @@ class TestACECore(unittest.TestCase):
         self.assertIn(b1, report["updated_bullet_ids"])
         self.assertEqual(pb.bullets[b1].refinement_count, 1)
         self.assertEqual(pb.bullets[b1].content, "Verify color consistency within the local target patch specifically.")
-        self.assertEqual(pb.bullets[b1].harmful_count, 1)
+        # harmful_count = 1 (pre-seeded) + 1 (this reflection's credit) = 2
+        self.assertEqual(pb.bullets[b1].harmful_count, 2)
 
     def test_json_extraction_formats(self):
         # Direct JSON
