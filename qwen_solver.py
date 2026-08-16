@@ -22,11 +22,20 @@ from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, Bits
 from qwen_vl_utils import process_vision_info
 
 
+MODEL_ALIASES = {
+    "7b": "Qwen/Qwen2.5-VL-7B-Instruct",
+    "qwen-7b": "Qwen/Qwen2.5-VL-7B-Instruct",
+    "3b": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "qwen-3b": "Qwen/Qwen2.5-VL-3B-Instruct",
+}
+
+
 class QwenSolver:
     """Phase 2 Local VLM Solver with 4-bit Quantization."""
 
     def __init__(self, model_id: str = QWEN_MODEL_ID):
-        self.model_id = model_id
+        # Resolve aliases
+        self.model_id = MODEL_ALIASES.get(model_id.strip().lower(), model_id.strip())
         self.model = None
         self.processor = None
         self._is_loaded = False

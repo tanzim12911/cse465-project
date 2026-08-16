@@ -45,6 +45,10 @@ def parse_args():
         help="Random seed for reproducible split generation",
     )
     parser.add_argument(
+        "--model_id", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct",
+        help="HuggingFace Model ID or alias (e.g., '7b', '3b', 'Qwen/Qwen2.5-VL-7B-Instruct', 'Qwen/Qwen2.5-VL-3B-Instruct')",
+    )
+    parser.add_argument(
         "--output_dir", type=str, default=DEFAULT_OUTPUT_DIR,
         help="Directory for incremental JSONL result logs and playbooks",
     )
@@ -271,7 +275,7 @@ def main():
     baseline_adapt_path = os.path.join(args.output_dir, f"results_{clean_task}_baseline_adaptation.jsonl")
 
     # 2. Initialize Solver
-    solver = QwenSolver()
+    solver = QwenSolver(model_id=args.model_id)
     solver.load_model()
 
     # 3. Execute Selected Mode
