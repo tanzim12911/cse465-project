@@ -41,9 +41,15 @@ class Generator(BaseAgent):
             max_new_tokens=256,
         )
 
+        # Normalize proposed_choice through the same option parser as the Solver
+        # to prevent junk like "(B) 1" or "(C) No" from being used as predictions.
+        raw_choice = raw_result.get("proposed_choice", "")
+        from qwen_solver import QwenSolver
+        proposed_choice = QwenSolver._parse_option_letter(str(raw_choice), choices=choices)
+
         return {
             "used_bullet_ids": raw_result.get("used_bullet_ids", []),
             "visual_observations": raw_result.get("visual_observations", ""),
             "reasoning_trajectory": raw_result.get("reasoning_trajectory", ""),
-            "proposed_choice": raw_result.get("proposed_choice", ""),
+            "proposed_choice": proposed_choice,
         }

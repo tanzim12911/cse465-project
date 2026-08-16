@@ -31,7 +31,9 @@ class PlaybookBullet:
 
         Conditions (ALL must hold):
           - harmful_count - helpful_count >= 2   (net negative signal)
-          - harmful_count >= 3                   (minimum evidence floor)
+          - harmful_count >= 2                   (minimum evidence floor, lowered
+                                                  from 3 to work within a 10–15
+                                                  step adaptation budget)
           - not high-utility                     (protects e.g. 8/1 bullets)
 
         Suppression never deletes the bullet from persistent storage.
@@ -40,7 +42,7 @@ class PlaybookBullet:
             return False
         return (
             (self.harmful_count - self.helpful_count) >= 2
-            and self.harmful_count >= 3
+            and self.harmful_count >= 2
         )
 
     def to_dict(self) -> Dict[str, Any]:

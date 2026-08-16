@@ -29,5 +29,6 @@ MAX_PIXELS = 1280 * 28 * 28
 DATASET_NAME = "umd-zhou-lab/ColorBench"
 DEFAULT_OUTPUT_DIR = "./results"
 
-# Default number of iterative prompting rounds
+# Default number of adaptation samples and iterative prompting rounds
+DEFAULT_ADAPTATION_SAMPLES = 15
 DEFAULT_ITERATIONS = 2
