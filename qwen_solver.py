@@ -78,20 +78,20 @@ class QwenSolver:
         # Build prompt based on mode
         if mode in ["ace", "adaptive_skills"] and skill:
             prompt_text = (
-                f"[ACE Domain Strategy Playbook]\n"
+                f"Context Playbook:\n"
                 f"{skill}\n\n"
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
-                f"Apply the relevant playbook strategies above to inspect the image and select the correct answer option."
+                f"Solve the question using the strategies above. State your final answer choice clearly as (A), (B), (C), (D), or (E)."
             )
         else:  # baseline — direct VQA
             prompt_text = (
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
-                f"Select the correct answer option."
+                f"Select the correct answer option directly as (A), (B), (C), (D), or (E)."
             )
 
-        raw_text, prediction = self._generate(image, prompt_text)
+        raw_text, prediction = self._generate(image, prompt_text, choices=choices)
         self.clear_memory()
 
         return {
@@ -101,7 +101,7 @@ class QwenSolver:
             "mode": mode,
         }
 
-    def _generate(self, image: Image.Image, prompt_text: str):
+    def _generate(self, image: Image.Image, prompt_text: str, choices: Optional[List[str]] = None):
         """Execute Qwen2.5-VL forward pass."""
         messages = [
             {
@@ -141,7 +141,7 @@ class QwenSolver:
             trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )[0]
 
-        prediction = self._parse_option_letter(output_text)
+        prediction = self._parse_option_letter(output_text, choices=choices)
         return output_text, prediction
 
     def generate_text(
@@ -200,20 +200,30 @@ class QwenSolver:
         return output_text
 
     @staticmethod
-    def _parse_option_letter(text: str) -> str:
+    def _parse_option_letter(text: str, choices: Optional[List[str]] = None) -> str:
         """Extract choice option letter (A)-(E) from model output."""
-        # Explicit bracketed format: (A), (B), etc.
+        # 1. Explicit bracketed format: (A), (B), etc.
         match = re.search(r"\(([A-E])\)", text, re.IGNORECASE)
         if match:
             return f"({match.group(1).upper()})"
-        # "Answer: A" format
-        match = re.search(r"\bAnswer:\s*([A-E])\b", text, re.IGNORECASE)
+        # 2. "Answer: A" or "Choice A" or "Option A"
+        match = re.search(r"\b(?:Answer|Choice|Option|is|select)\s*:?\s*\(?([A-E])\)?\b", text, re.IGNORECASE)
         if match:
             return f"({match.group(1).upper()})"
-        # Standalone letter
+        # 3. Standalone letter on its own word
         match = re.search(r"\b([A-E])\b", text)
         if match:
             return f"({match.group(1).upper()})"
+        
+        # 4. Fallback: match against choice values if provided
+        if choices:
+            labels = ["A", "B", "C", "D", "E", "F"]
+            for idx, c in enumerate(choices):
+                if idx < len(labels) and c.strip():
+                    pattern = r"\b" + re.escape(c.strip()) + r"\b"
+                    if re.search(pattern, text, re.IGNORECASE):
+                        return f"({labels[idx]})"
+
         return "(UNKNOWN)"
 
     @staticmethod

@@ -17,7 +17,7 @@ QUANTIZATION_CONFIG = {
     "bnb_4bit_quant_type": "nf4",
     "bnb_4bit_use_double_quant": True,
 }
-SOLVER_MAX_NEW_TOKENS = 256
+SOLVER_MAX_NEW_TOKENS = 512
 
 # Image resolution bounds to cap visual tokens and prevent attention OOM on T4
 MIN_PIXELS = 256 * 28 * 28
