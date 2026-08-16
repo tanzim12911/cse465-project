@@ -58,6 +58,12 @@ class Reflector(BaseAgent):
             delta_cands = []
 
         clean_cands = []
+        _VALID_RULE_TYPES = {
+            "procedural_inspection",
+            "conclusion_directed",
+            "confounder_handling",
+            "task_specific",
+        }
         for cand in delta_cands:
             if isinstance(cand, dict) and "content" in cand:
                 ref_id = cand.get("refines_bullet_id")
@@ -66,11 +72,18 @@ class Reflector(BaseAgent):
                 else:
                     ref_id = None
 
+                raw_rule_type = cand.get("rule_type", "procedural_inspection")
+                if isinstance(raw_rule_type, str):
+                    raw_rule_type = raw_rule_type.strip().lower()
+                rule_type = raw_rule_type if raw_rule_type in _VALID_RULE_TYPES else "procedural_inspection"
+
                 clean_cands.append({
                     "category": cand.get("category", "general_strategy").strip().lower(),
                     "content": cand.get("content", "").strip(),
+                    "rule_type": rule_type,
                     "refines_bullet_id": ref_id,
                 })
+
 
         return {
             "critique": raw_result.get("critique", ""),
