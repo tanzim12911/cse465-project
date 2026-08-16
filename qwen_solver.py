@@ -78,17 +78,17 @@ class QwenSolver:
         # Build prompt based on mode
         if mode in ["ace", "adaptive_skills"] and skill:
             prompt_text = (
-                f"This is the skill playbook to solve this question, "
-                f"now solve the question and give me the answer.\n\n"
+                f"[ACE Domain Strategy Playbook]\n"
                 f"{skill}\n\n"
-                f"Question: {question}\n"
-                f"Choices:\n{options_text}"
+                f"Question: {question}\n\n"
+                f"Choices:\n{options_text}\n\n"
+                f"Apply the relevant playbook strategies above to inspect the image and select the correct answer option."
             )
         else:  # baseline — direct VQA
             prompt_text = (
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
-                f"Select the correct answer."
+                f"Select the correct answer option."
             )
 
         raw_text, prediction = self._generate(image, prompt_text)
