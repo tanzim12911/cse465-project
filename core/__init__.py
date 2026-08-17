@@ -5,6 +5,8 @@ from .base import BaseAgent
 from .generator import Generator
 from .reflector import Reflector
 from .curator import Curator
+from .illusion_router import classify_illusion_question, SurrogateVerifier
+from .subtype_playbook import SubtypePlaybookManager
 
 __all__ = [
     "Playbook",
@@ -13,4 +15,7 @@ __all__ = [
     "Generator",
     "Reflector",
     "Curator",
+    "classify_illusion_question",
+    "SurrogateVerifier",
+    "SubtypePlaybookManager",
 ]

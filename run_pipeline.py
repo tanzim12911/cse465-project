@@ -52,6 +52,11 @@ def parse_args():
         "--output_dir", type=str, default=DEFAULT_OUTPUT_DIR,
         help="Directory for incremental JSONL result logs and playbooks",
     )
+    parser.add_argument(
+        "--use_subtype_playbooks", action="store_true", default=False,
+        help="(Color Illusion only) Use per-subtype playbooks + surrogate verifier "
+             "instead of the flat ACE playbook. Implements the CoEvoSkill verification idea.",
+    )
     return parser.parse_args()
 
 
@@ -114,6 +119,7 @@ def run_ace_pipeline(
     eval_items: list,
     task_name: str,
     output_dir: str,
+    use_subtype_playbooks: bool = False,
 ):
     """Execute complete ACE Adaptation + Held-Out Evaluation."""
     clean_task = task_name.lower().replace(" ", "_")
@@ -123,15 +129,27 @@ def run_ace_pipeline(
     adapt_log_path = os.path.join(output_dir, f"results_{clean_task}_ace_adaptation.jsonl")
     eval_log_path = os.path.join(output_dir, f"results_{clean_task}_ace_heldout.jsonl")
 
-    # Initialize ACE system with empty Playbook
-    ace_system = ACE(solver=solver, task=task_name)
+    # ---------------------------------------------------------
+    # Choose orchestrator
+    # ---------------------------------------------------------
+    if use_subtype_playbooks:
+        from ace_illusion import ACEIllusion
+        ace_system = ACEIllusion(solver=solver, task=task_name)
+        # Reserve a small probe set per subtype; returns the actual adapt items
+        adapt_items = ace_system.set_probe_items(adapt_items)
+        is_illusion_mode = True
+        print(f"[Pipeline] Using ACEIllusion with per-subtype playbooks + surrogate verifier.")
+    else:
+        ace_system = ACE(solver=solver, task=task_name)
+        is_illusion_mode = False
 
     # ---------------------------------------------------------
     # Phase 1: ACE Adaptation on Adaptation Split
     # ---------------------------------------------------------
     print("\n" + "=" * 70)
     print(f"[ACE Phase 1: Adaptation] Adapting on {len(adapt_items)} samples...")
-    print(f"Initial Playbook Bullets: {len(ace_system.playbook.bullets)}")
+    if not is_illusion_mode:
+        print(f"Initial Playbook Bullets: {len(ace_system.playbook.bullets)}")
     print("=" * 70)
 
     adapt_logger = IncrementalLogger(adapt_log_path)
@@ -160,9 +178,19 @@ def run_ace_pipeline(
         print(f"  Bullets Added: {adapt_record['curation_report'].get('added_bullet_ids', [])}")
         print(f"  Bullets Refined (UPDATE): {adapt_record['curation_report'].get('updated_bullet_ids', [])}")
         print(f"  Suppressed Bullets: {adapt_record['curation_report'].get('suppressed_bullet_ids', [])}")
-        print(f"  Playbook Size: {adapt_record['total_bullets']} bullets (Active: {adapt_record['curation_report'].get('active_bullets_count', adapt_record['total_bullets'])}, v{adapt_record['playbook_version']})")
+        if is_illusion_mode:
+            print(f"  Subtype: {adapt_record.get('subtype', '?')} | Subtype Summary: {adapt_record.get('subtype_summary', {})}")
+            verifier_reps = adapt_record.get("verifier_reports", [])
+            for vr in verifier_reps:
+                verdict = "ACCEPTED" if vr["verdict"] else "REJECTED"
+                diag = vr["diag"]
+                print(f"  Verifier [{verdict}] delta={diag.get('delta', '?'):.2f} reason={diag.get('reason','?')}: {vr['candidate'][:60]}...")
+        else:
+            print(f"  Playbook Size: {adapt_record['total_bullets']} bullets "
+                  f"(Active: {adapt_record['curation_report'].get('active_bullets_count', adapt_record['total_bullets'])}, "
+                  f"v{adapt_record['playbook_version']})")
 
-        adapt_logger.log_result({
+        log_entry = {
             "step": step_i + 1,
             "idx": idx,
             "id": item["id"],
@@ -178,34 +206,47 @@ def run_ace_pipeline(
             "curation_report": adapt_record["curation_report"],
             "playbook_version": adapt_record["playbook_version"],
             "total_bullets": adapt_record["total_bullets"],
-        })
+        }
+        if is_illusion_mode:
+            log_entry["subtype"] = adapt_record.get("subtype", "")
+            log_entry["verifier_reports"] = adapt_record.get("verifier_reports", [])
+            log_entry["subtype_summary"] = adapt_record.get("subtype_summary", {})
+        adapt_logger.log_result(log_entry)
 
     # ---------------------------------------------------------
-    # Phase 2: Persist Learned Playbook
+    # Phase 2: Persist Learned Playbook(s)
     # ---------------------------------------------------------
-    ace_system.save_playbook(playbook_json_path)
-    print("\n" + "=" * 70)
-    print(f"[ACE Phase 2: Saved Playbook] {len(ace_system.playbook.bullets)} total bullets saved.")
-    print(f"JSON: {playbook_json_path}")
-    print(f"Markdown: {os.path.splitext(playbook_json_path)[0]}.md")
-    print("=" * 70)
+    if is_illusion_mode:
+        ace_system.save_playbooks(playbook_json_path)
+        print("\n" + "=" * 70)
+        print(f"[ACE Phase 2: Saved Subtype Playbooks]")
+        for subtype, stats in ace_system.manager.summary().items():
+            print(f"  {subtype}: {stats['total']} bullets (active={stats['active']}, suppressed={stats['suppressed']})")
+        print("=" * 70)
+    else:
+        ace_system.save_playbook(playbook_json_path)
+        print("\n" + "=" * 70)
+        print(f"[ACE Phase 2: Saved Playbook] {len(ace_system.playbook.bullets)} total bullets saved.")
+        print(f"JSON: {playbook_json_path}")
+        print(f"Markdown: {os.path.splitext(playbook_json_path)[0]}.md")
+        print("=" * 70)
 
-    # End-of-adaptation playbook audit — every persistent bullet with full stats
-    print("\n[ACE Phase 2: End-of-Adaptation Playbook Summary]")
-    print(f"{'ID':<12} {'H+':>4} {'H-':>4} {'Ref':>4} {'Status':<12} {'Step':>5}  Content")
-    print("-" * 100)
-    for bullet in ace_system.playbook.bullets.values():
-        status = "suppressed" if bullet.is_suppressed() else ("HIGH-UTIL" if bullet.is_high_utility() else "active")
-        step_str = str(bullet.source_step) if bullet.source_step is not None else "-"
-        content_preview = bullet.content[:70] + ("..." if len(bullet.content) > 70 else "")
-        print(
-            f"{bullet.bullet_id:<12} {bullet.helpful_count:>4} {bullet.harmful_count:>4} "
-            f"{bullet.refinement_count:>4} {status:<12} {step_str:>5}  {content_preview}"
-        )
-    print("-" * 100)
+        # End-of-adaptation playbook audit
+        print("\n[ACE Phase 2: End-of-Adaptation Playbook Summary]")
+        print(f"{'ID':<12} {'H+':>4} {'H-':>4} {'Ref':>4} {'Status':<12} {'Step':>5}  Content")
+        print("-" * 100)
+        for bullet in ace_system.playbook.bullets.values():
+            status = "suppressed" if bullet.is_suppressed() else ("HIGH-UTIL" if bullet.is_high_utility() else "active")
+            step_str = str(bullet.source_step) if bullet.source_step is not None else "-"
+            content_preview = bullet.content[:70] + ("..." if len(bullet.content) > 70 else "")
+            print(
+                f"{bullet.bullet_id:<12} {bullet.helpful_count:>4} {bullet.harmful_count:>4} "
+                f"{bullet.refinement_count:>4} {status:<12} {step_str:>5}  {content_preview}"
+            )
+        print("-" * 100)
 
     # ---------------------------------------------------------
-    # Phase 3: Evaluate Frozen Playbook on Held-Out Test Set
+    # Phase 3: Evaluate Frozen Playbook(s) on Held-Out Test Set
     # ---------------------------------------------------------
     print("\n" + "=" * 70)
     print(f"[ACE Phase 3: Held-Out Evaluation] Evaluating on {len(eval_items)} unseen samples...")
@@ -235,8 +276,10 @@ def run_ace_pipeline(
         total += 1
 
         print(f"  ACE Pred: {pred} | GT: {gt} | {'[CORRECT]' if is_corr else '[WRONG]'}")
+        if is_illusion_mode:
+            print(f"  Subtype: {res.get('subtype', '?')}")
 
-        eval_logger.log_result({
+        log_entry = {
             "idx": idx,
             "id": item["id"],
             "task": task_name,
@@ -248,9 +291,13 @@ def run_ace_pipeline(
             "prediction": pred,
             "is_correct": is_corr,
             "raw_output": res["raw_output"],
-            "playbook_version": ace_system.playbook.version,
-            "total_bullets_used": len(ace_system.playbook.bullets),
-        })
+        }
+        if is_illusion_mode:
+            log_entry["subtype"] = res.get("subtype", "")
+        else:
+            log_entry["playbook_version"] = ace_system.playbook.version
+            log_entry["total_bullets_used"] = len(ace_system.playbook.bullets)
+        eval_logger.log_result(log_entry)
 
     elapsed = time.time() - start
     acc = (correct / total * 100) if total > 0 else 0.0
@@ -298,6 +345,7 @@ def main():
             eval_items=eval_items,
             task_name=args.task,
             output_dir=args.output_dir,
+            use_subtype_playbooks=args.use_subtype_playbooks,
         )
 
     print("\n" + "=" * 70)
