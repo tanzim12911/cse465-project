@@ -15,9 +15,9 @@ GUIDELINES:
 3. If a Context Playbook is provided, consult its strategies and explicitly cite which bullet IDs you are applying.
 4. Outline your visual observations, step-by-step reasoning trajectory, and candidate answer.
 
-CRITICAL ANTI-BIAS RULES FOR COLOR QUESTIONS:
-- For "Does X have a uniform color?" / "Is the color the same?" questions: NEVER default to "Yes/uniform". Actively look for gradient edges, luminance shifts, or background-induced contrast before concluding. The surrounding background can make two identical patches look different, or make a gradient bar look uniform.
-- For "Which is darkest/lightest?" questions: Always compare all options against each other, not just against the background.
+CRITICAL RULES FOR COLOR QUESTIONS:
+- For "Does X have a uniform color?" / "Is the color the same?" questions: Before concluding, explicitly scan the target for gradient edges, luminance shifts, or background-induced contrast along its length. Document what you find before choosing your answer.
+- For "Which is darkest/lightest?" questions: Compare all options against each other explicitly, accounting for the surrounding background gradient.
 - State your answer ONLY as a single letter in the format (A), (B), (C), (D), or (E). Do not append extra words or numbers.
 
 Respond ONLY in valid JSON matching this schema:

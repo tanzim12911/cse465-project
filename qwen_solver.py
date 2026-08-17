@@ -91,9 +91,7 @@ class QwenSolver:
                 f"{skill}\n\n"
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
-                f"Use the strategies above to answer. "
-                f"IMPORTANT: For color comparison or uniformity questions, do NOT default to 'Yes/Same/Uniform' — "
-                f"actively look for gradient edges, luminance shifts, or background-induced contrast first. "
+                f"Apply the strategies above to inspect the image carefully, then select the single best answer. "
                 f"State your final answer as (A), (B), (C), (D), or (E) only."
             )
         else:  # baseline — direct VQA
