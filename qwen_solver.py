@@ -19,7 +19,10 @@ from config import (
 )
 
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, BitsAndBytesConfig
-from qwen_vl_utils import process_vision_info
+try:
+    from qwen_vl_utils import process_vision_info
+except ImportError:
+    process_vision_info = None
 
 
 MODEL_ALIASES = {
@@ -91,8 +94,7 @@ class QwenSolver:
                 f"{skill}\n\n"
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
-                f"Apply the strategies above to inspect the image carefully, then select the single best answer. "
-                f"State your final answer as (A), (B), (C), (D), or (E) only."
+                f"Instructions: Apply the strategies from the Context Playbook above. Briefly state your visual observation in 1-2 sentences, then state your final selection strictly as 'Final Answer: (X)' where X is the single chosen option letter."
             )
         else:  # baseline — direct VQA
             prompt_text = (
@@ -212,20 +214,34 @@ class QwenSolver:
     @staticmethod
     def _parse_option_letter(text: str, choices: Optional[List[str]] = None) -> str:
         """Extract choice option letter (A)-(E) from model output."""
-        # 1. Explicit bracketed format: (A), (B), etc.
-        match = re.search(r"\(([A-E])\)", text, re.IGNORECASE)
+        if not text:
+            return "(UNKNOWN)"
+
+        # 1. Explicit "Final Answer: (A)" or "Answer: (A)" or "Final Answer: A"
+        match = re.findall(
+            r"(?:Final\s+Answer|Final\s+Choice|Answer|Choice|Option|Selected|Select)\s*:?\s*\(?([A-E])\)?\b",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            return f"({match[-1].upper()})"
+
+        # 2. Look for bracketed format: (A), (B), etc. Pick the last occurrence (conclusion)
+        bracket_matches = re.findall(r"\(([A-E])\)", text, re.IGNORECASE)
+        if bracket_matches:
+            return f"({bracket_matches[-1].upper()})"
+
+        # 3. Trailing standalone letter on its own line or end of string
+        match = re.search(r"\b([A-E])\b\s*$", text.strip())
         if match:
             return f"({match.group(1).upper()})"
-        # 2. "Answer: A" or "Choice A" or "Option A"
-        match = re.search(r"\b(?:Answer|Choice|Option|is|select)\s*:?\s*\(?([A-E])\)?\b", text, re.IGNORECASE)
-        if match:
-            return f"({match.group(1).upper()})"
-        # 3. Standalone letter on its own word
-        match = re.search(r"\b([A-E])\b", text)
-        if match:
-            return f"({match.group(1).upper()})"
-        
-        # 4. Fallback: match against choice values if provided
+
+        # 4. Standalone letter
+        standalone_matches = re.findall(r"\b([A-E])\b", text)
+        if standalone_matches:
+            return f"({standalone_matches[-1].upper()})"
+
+        # 5. Fallback: match against choice values if provided
         if choices:
             labels = ["A", "B", "C", "D", "E", "F"]
             for idx, c in enumerate(choices):

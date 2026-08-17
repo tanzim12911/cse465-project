@@ -153,6 +153,60 @@ class TestACECore(unittest.TestCase):
         res = BaseAgent._extract_json(md_text)
         self.assertEqual(res, {"proposed_choice": "(B)", "refines_bullet_id": "CTX-001"})
 
+    def test_option_parser_cot_and_robustness(self):
+        from qwen_solver import QwenSolver
+        choices = ["1", "2", "3", "0"]
+
+        # Case 1: Mentioning option letters during CoT reasoning before concluding
+        cot_output = (
+            "Observation: The image contains one main camouflaged subject at (A) and another structure at (B). "
+            "However, verifying morphological contours confirms only one actual organism is present.\n"
+            "Final Answer: (A)"
+        )
+        self.assertEqual(QwenSolver._parse_option_letter(cot_output, choices=choices), "(A)")
+
+        # Case 2: Bracketed conclusion at end
+        cot_output2 = "The horizontal bar exhibits a continuous luminance gradient from left to right. Therefore, the answer is (C)."
+        self.assertEqual(QwenSolver._parse_option_letter(cot_output2, choices=choices), "(C)")
+
+        # Case 3: Direct letter output
+        self.assertEqual(QwenSolver._parse_option_letter("(D)", choices=choices), "(D)")
+
+    def test_compact_playbook_prompt_budget(self):
+        pb = Playbook(task="Color Mimicry")
+        # Add 6 distinct bullets with varying helpful/harmful scores
+        contents = [
+            "Inspect morphological contours and anatomical symmetry to detect camouflaged subjects.",
+            "Compare local patch luminance against the surrounding background ramp.",
+            "Disregard surface coloration and trace structural limb boundaries.",
+            "Assume background is uniform without inspecting edge transitions.",
+            "Check for texture discontinuities separating subject from substrate.",
+            "Evaluate illumination variance across different quadrants of the scene.",
+        ]
+        b_ids = []
+        for i, c in enumerate(contents):
+            b_id = pb.add_bullet(
+                category="morphology",
+                content=c,
+                source_step=i+1,
+            )
+            b_ids.append(b_id)
+
+        # Assign credit
+        pb.mark_helpful([b_ids[0], b_ids[0], b_ids[0]])  # net +3
+        pb.mark_helpful([b_ids[1], b_ids[1]])             # net +2
+        pb.mark_helpful([b_ids[2]])                       # net +1
+        pb.mark_harmful([b_ids[3]])                       # net -1 (harmful > helpful)
+        pb.mark_helpful([b_ids[4]])                       # net 0 (helpful=1, harmful=1)
+        pb.mark_harmful([b_ids[4]])
+
+        # format_for_prompt should cap at max 4 bullets and exclude net negative (b_ids[3])
+        prompt_text = pb.format_for_prompt(max_active_bullets=4)
+        self.assertIn(b_ids[0], prompt_text)
+        self.assertIn(b_ids[1], prompt_text)
+        self.assertIn(b_ids[2], prompt_text)
+        self.assertNotIn(b_ids[3], prompt_text)  # excluded due to net negative utility
+
 
 if __name__ == "__main__":
     unittest.main()

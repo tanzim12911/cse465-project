@@ -182,17 +182,28 @@ class Playbook:
         """Return list of bullet IDs that are currently suppressed due to net negative utility."""
         return [b.bullet_id for b in self.bullets.values() if b.is_suppressed()]
 
-    def format_for_prompt(self, max_active_bullets: int = 15) -> str:
+    def format_for_prompt(self, max_active_bullets: int = 4) -> str:
         """
         Render structured active context for inclusion in Generator or Solver prompt.
-        Filters out suppressed bullets and bounds active context to max_active_bullets.
+        Filters out suppressed bullets, ensures non-negative net utility, and limits
+        context to the top max_active_bullets (default 4) to prevent attention dilution.
         """
-        active_bullets = [b for b in self.bullets.values() if not b.is_suppressed()]
+        # Only consider active bullets with non-negative net utility
+        active_bullets = [
+            b for b in self.bullets.values()
+            if not b.is_suppressed() and (b.helpful_count >= b.harmful_count)
+        ]
+        if not active_bullets:
+            # Fall back to non-suppressed if none have positive history yet (e.g. early adaptation)
+            active_bullets = [b for b in self.bullets.values() if not b.is_suppressed()]
         if not active_bullets:
             return ""
 
-        # Limit to max_active_bullets, prioritizing higher net utility (helpful - harmful)
-        active_bullets.sort(key=lambda b: (b.helpful_count - b.harmful_count), reverse=True)
+        # Rank strictly by net utility (helpful - harmful), then by helpful_count
+        active_bullets.sort(
+            key=lambda b: (b.helpful_count - b.harmful_count, b.helpful_count),
+            reverse=True,
+        )
         active_bullets = active_bullets[:max_active_bullets]
 
         lines = ["[ACE Context Playbook - Accumulated Domain Strategies]"]

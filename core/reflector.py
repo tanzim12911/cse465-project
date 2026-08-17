@@ -74,12 +74,48 @@ class Reflector(BaseAgent):
         clean_cands = []
         _VALID_RULE_TYPES = {
             "procedural_inspection",
-            "conclusion_directed",
             "confounder_handling",
             "task_specific",
         }
+        _FORBIDDEN_ENTITY_WORDS = {
+            "snail", "snails", "moth", "moths", "butterfly", "caterpillar", "gecko", "geckos",
+            "lizard", "lizards", "frog", "frogs", "toad", "toads", "owl", "owls", "bird", "birds",
+            "fish", "fishes", "seahorse", "seahorses", "seadragon", "seadragons", "octopus", "octopuses",
+            "crab", "crabs", "mantis", "mantises", "insect", "insects", "animal", "animals",
+            "twig", "twigs", "branch", "branches", "leaf", "leaves", "bark", "tree", "trees",
+            "stone", "stones", "rock", "rocks", "sand", "flower", "flowers", "petal", "petals",
+            "dress", "dresses", "pill", "pills", "tile", "tiles", "column", "columns", "cylinder",
+            "plus sign", "bar", "bars", "circle", "circles",
+        }
+        _FORBIDDEN_CONCLUSION_PATTERNS = [
+            r"\balways\s+choose\b",
+            r"\bnever\s+choose\b",
+            r"\bconclude\s+that\b",
+            r"\bverify\s+the\s+absence\s+of\b",
+            r"\bavoid\s+concluding\b",
+        ]
+
+        import re
+
         for cand in delta_cands:
             if isinstance(cand, dict) and "content" in cand:
+                content = cand.get("content", "").strip()
+                if not content or len(content) < 15:
+                    continue
+
+                content_lower = content.lower()
+
+                # Filter 1: Drop candidates mentioning specific entity nouns
+                words_in_content = set(re.findall(r"\b[a-z]+\b", content_lower))
+                if any(w in words_in_content for w in _FORBIDDEN_ENTITY_WORDS):
+                    print(f"[Reflector Filter] Dropped entity-specific candidate: {content[:60]}...")
+                    continue
+
+                # Filter 2: Drop candidates with conclusion-directed biasing phrases
+                if any(re.search(pat, content_lower) for pat in _FORBIDDEN_CONCLUSION_PATTERNS):
+                    print(f"[Reflector Filter] Dropped conclusion-directed candidate: {content[:60]}...")
+                    continue
+
                 ref_id = cand.get("refines_bullet_id")
                 if ref_id and isinstance(ref_id, str):
                     ref_id = ref_id.strip()
@@ -93,11 +129,10 @@ class Reflector(BaseAgent):
 
                 clean_cands.append({
                     "category": cand.get("category", "general_strategy").strip().lower(),
-                    "content": cand.get("content", "").strip(),
+                    "content": content,
                     "rule_type": rule_type,
                     "refines_bullet_id": ref_id,
                 })
-
 
         return {
             "critique": raw_result.get("critique", ""),

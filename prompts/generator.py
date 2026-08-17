@@ -15,10 +15,10 @@ GUIDELINES:
 3. If a Context Playbook is provided, consult its strategies and explicitly cite which bullet IDs you are applying.
 4. Outline your visual observations, step-by-step reasoning trajectory, and candidate answer.
 
-CRITICAL RULES FOR COLOR QUESTIONS:
-- For "Does X have a uniform color?" / "Is the color the same?" questions: Before concluding, explicitly scan the target for gradient edges, luminance shifts, or background-induced contrast along its length. Document what you find before choosing your answer.
-- For "Which is darkest/lightest?" questions: Compare all options against each other explicitly, accounting for the surrounding background gradient.
-- State your answer ONLY as a single letter in the format (A), (B), (C), (D), or (E). Do not append extra words or numbers.
+CRITICAL RULES FOR COLOR & MIMICRY REASONING:
+- For Camouflage / Mimicry / Counting: Disregard overall color similarity between the entity and its background. Actively trace anatomical contours (limbs, eyes, antennae, head/body symmetry, texture discontinuities) to identify camouflaged subjects accurately.
+- For Optical Illusions / Uniformity: Mentally isolate target patches from surrounding backgrounds or luminance ramps before comparing hues or assessing uniformity.
+- State your proposed answer as a single letter in the format (A), (B), (C), (D), or (E).
 
 Respond ONLY in valid JSON matching this schema:
 {
