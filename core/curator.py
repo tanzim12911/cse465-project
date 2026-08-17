@@ -45,7 +45,7 @@ from typing import Dict, List, Any, Optional
 from .base import BaseAgent
 from .playbook import Playbook
 
-MAX_ACTIVE_BULLETS: int = 15
+MAX_ACTIVE_BULLETS: int = 20
 # Jaccard similarity threshold used in update-rejected ADD-fallback overlap check.
 # Intentionally the same threshold as add_bullet() so behaviour is symmetric.
 _OVERLAP_THRESHOLD: float = 0.65

@@ -66,10 +66,19 @@ class ColorBenchDataLoader:
         """
         Create or load deterministic adaptation and held-out evaluation splits.
         Saves split metadata to JSON to guarantee identical instances across runs.
+
+        The cache key encodes seed + num_adaptation + num_eval so that changing
+        the split sizes always produces a fresh, correctly-sized split rather
+        than silently reusing an old cached split.
         """
         os.makedirs(splits_dir, exist_ok=True)
         clean_task = self.task_filter.lower().replace(" ", "_")
-        split_file = os.path.join(splits_dir, f"{clean_task}_seed{seed}.json")
+        # Include sizes in filename so num_adaptation=50/num_eval=30 gets its
+        # own cache entry and never collides with an old num_adaptation=10 file.
+        split_file = os.path.join(
+            splits_dir,
+            f"{clean_task}_seed{seed}_a{num_adaptation}_e{num_eval}.json",
+        )
 
         all_items = self.get_all_task_items()
         if len(all_items) < (num_adaptation + num_eval):

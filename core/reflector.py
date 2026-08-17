@@ -7,6 +7,7 @@ from PIL import Image
 from .base import BaseAgent
 from .playbook import Playbook
 from prompts.reflector import REFLECTOR_SYSTEM_PROMPT
+from config import REFLECTOR_MAX_NEW_TOKENS
 
 
 class Reflector(BaseAgent):
@@ -60,7 +61,7 @@ class Reflector(BaseAgent):
             system_prompt=REFLECTOR_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             image=image,
-            max_new_tokens=256,
+            max_new_tokens=REFLECTOR_MAX_NEW_TOKENS,
         )
 
         # Normalize delta_candidates

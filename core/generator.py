@@ -7,6 +7,7 @@ from PIL import Image
 from .base import BaseAgent
 from .playbook import Playbook
 from prompts.generator import GENERATOR_SYSTEM_PROMPT
+from config import GENERATOR_MAX_NEW_TOKENS
 
 
 class Generator(BaseAgent):
@@ -38,7 +39,7 @@ class Generator(BaseAgent):
             system_prompt=GENERATOR_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             image=image,
-            max_new_tokens=256,
+            max_new_tokens=GENERATOR_MAX_NEW_TOKENS,
         )
 
         # Normalize proposed_choice through the same option parser as the Solver

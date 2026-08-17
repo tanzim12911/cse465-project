@@ -137,6 +137,10 @@ def run_ace_pipeline(
     adapt_logger = IncrementalLogger(adapt_log_path)
     for step_i, item in enumerate(adapt_items):
         idx = item["idx"]
+        if idx in adapt_logger.processed_indices:
+            print(f"\n[ACE Adapt Step {step_i + 1}/{len(adapt_items)}] idx={idx} — already processed, skipping.")
+            continue
+
         print(f"\n[ACE Adapt Step {step_i + 1}/{len(adapt_items)}] idx={idx} | Q: {item['question']}")
 
         adapt_record = ace_system.adapt_on_example(

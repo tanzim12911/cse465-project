@@ -17,6 +17,12 @@ QUANTIZATION_CONFIG = {
     "bnb_4bit_quant_type": "nf4",
     "bnb_4bit_use_double_quant": True,
 }
+# Token budget for each agent role.
+# Generator & Reflector produce structured JSON — 384 tokens comfortably
+# fits a full trajectory + 2 delta candidates even with a rich playbook.
+# Solver only needs to emit a short answer, so 512 is generous.
+GENERATOR_MAX_NEW_TOKENS = 384
+REFLECTOR_MAX_NEW_TOKENS = 384
 SOLVER_MAX_NEW_TOKENS = 512
 
 # Image resolution bounds to cap visual tokens and prevent attention OOM on T4
