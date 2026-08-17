@@ -21,7 +21,7 @@ ADD capacity cap
 Suppression
   Delegated to PlaybookBullet.is_suppressed() which now requires:
     - harmful_count - helpful_count >= 2, AND
-    - harmful_count >= 3, AND
+    - harmful_count >= 2, AND
     - bullet is NOT high-utility.
   Suppression deactivates the bullet from Solver context; it is never deleted.
 

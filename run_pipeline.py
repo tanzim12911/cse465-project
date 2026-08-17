@@ -184,7 +184,9 @@ def run_ace_pipeline(
             for vr in verifier_reps:
                 verdict = "ACCEPTED" if vr["verdict"] else "REJECTED"
                 diag = vr["diag"]
-                print(f"  Verifier [{verdict}] delta={diag.get('delta', '?'):.2f} reason={diag.get('reason','?')}: {vr['candidate'][:60]}...")
+                delta_val = diag.get("delta")
+                delta_str = f"{delta_val:.2f}" if isinstance(delta_val, (int, float)) else "?"
+                print(f"  Verifier [{verdict}] delta={delta_str} reason={diag.get('reason','?')}: {vr['candidate'][:60]}...")
         else:
             print(f"  Playbook Size: {adapt_record['total_bullets']} bullets "
                   f"(Active: {adapt_record['curation_report'].get('active_bullets_count', adapt_record['total_bullets'])}, "
