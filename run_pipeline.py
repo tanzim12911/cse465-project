@@ -16,17 +16,12 @@ import os
 import time
 import argparse
 from config import DEFAULT_OUTPUT_DIR
-from data_loader import ColorBenchDataLoader, IncrementalLogger
-from ace import ACE
+from data_loader import ColorIllusionDataLoader, IncrementalLogger
 from qwen_solver import QwenSolver
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="CSE465 ColorBench ACE Pipeline")
-    parser.add_argument(
-        "--task", type=str, default="Color Mimicry",
-        help="ColorBench task (e.g., 'Color Mimicry', 'Color Illusion', 'Color Recognition')",
-    )
+    parser = argparse.ArgumentParser(description="CSE465 ColorBench Color Illusion Pipeline")
     parser.add_argument(
         "--mode", type=str, default="ace",
         choices=["baseline", "ace", "both"],
@@ -51,11 +46,6 @@ def parse_args():
     parser.add_argument(
         "--output_dir", type=str, default=DEFAULT_OUTPUT_DIR,
         help="Directory for incremental JSONL result logs and playbooks",
-    )
-    parser.add_argument(
-        "--use_subtype_playbooks", action="store_true", default=False,
-        help="(Color Illusion only) Use per-subtype playbooks + surrogate verifier "
-             "instead of the flat ACE playbook. Implements the CoEvoSkill verification idea.",
     )
     return parser.parse_args()
 
@@ -119,7 +109,6 @@ def run_ace_pipeline(
     eval_items: list,
     task_name: str,
     output_dir: str,
-    use_subtype_playbooks: bool = False,
 ):
     """Execute complete ACE Adaptation + Held-Out Evaluation."""
     clean_task = task_name.lower().replace(" ", "_")
@@ -132,16 +121,12 @@ def run_ace_pipeline(
     # ---------------------------------------------------------
     # Choose orchestrator
     # ---------------------------------------------------------
-    if use_subtype_playbooks:
-        from ace_illusion import ACEIllusion
-        ace_system = ACEIllusion(solver=solver, task=task_name)
-        # Reserve a small probe set per subtype; returns the actual adapt items
-        adapt_items = ace_system.set_probe_items(adapt_items)
-        is_illusion_mode = True
-        print(f"[Pipeline] Using ACEIllusion with per-subtype playbooks + surrogate verifier.")
-    else:
-        ace_system = ACE(solver=solver, task=task_name)
-        is_illusion_mode = False
+    from ace_illusion import ACEIllusion
+    ace_system = ACEIllusion(solver=solver, task=task_name)
+    # Reserve per-subtype validation probes; they are never used to update rules.
+    adapt_items = ace_system.set_probe_items(adapt_items)
+    is_illusion_mode = True
+    print("[Pipeline] Using Color Illusion subtype playbooks + strict candidate validation.")
 
     # ---------------------------------------------------------
     # Phase 1: ACE Adaptation on Adaptation Split
@@ -309,22 +294,23 @@ def run_ace_pipeline(
 
 def main():
     args = parse_args()
+    task_name = "Color Illusion"
 
     print("=" * 70)
     print(f"CSE465 ColorBench — ACE Architecture Pipeline")
-    print(f"Task: {args.task} | Mode: {args.mode} | Seed: {args.seed}")
+    print(f"Task: {task_name} | Mode: {args.mode} | Seed: {args.seed}")
     print(f"Adaptation Samples: {args.num_adaptation} | Held-Out Eval Samples: {args.num_eval}")
     print("=" * 70)
 
     # 1. Load Data and Deterministic Splits
-    loader = ColorBenchDataLoader(task_filter=args.task)
+    loader = ColorIllusionDataLoader()
     adapt_items, eval_items = loader.create_or_load_splits(
         num_adaptation=args.num_adaptation,
         num_eval=args.num_eval,
         seed=args.seed,
     )
 
-    clean_task = args.task.lower().replace(" ", "_")
+    clean_task = task_name.lower().replace(" ", "_")
     baseline_eval_path = os.path.join(args.output_dir, f"results_{clean_task}_baseline_heldout.jsonl")
     baseline_adapt_path = os.path.join(args.output_dir, f"results_{clean_task}_baseline_adaptation.jsonl")
 
@@ -345,13 +331,12 @@ def main():
             solver=solver,
             adapt_items=adapt_items,
             eval_items=eval_items,
-            task_name=args.task,
+            task_name=task_name,
             output_dir=args.output_dir,
-            use_subtype_playbooks=args.use_subtype_playbooks,
         )
 
     print("\n" + "=" * 70)
-    print(f"PIPELINE COMPLETED SUCCESSFULLY for {args.task}")
+    print(f"PIPELINE COMPLETED SUCCESSFULLY for {task_name}")
     print(f"Run 'python eval_results.py' to compare Baseline vs. ACE.")
     print("=" * 70)
 

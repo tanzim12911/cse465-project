@@ -15,11 +15,12 @@ except ImportError:
     HAS_DATASETS = False
 
 
-class ColorBenchDataLoader:
-    """Streams and manages ColorBench task instances from HuggingFace."""
+class ColorIllusionDataLoader:
+    """Streams only the Color Illusion subset of ColorBench."""
 
-    def __init__(self, task_filter: str = "Color Mimicry"):
-        self.task_filter = task_filter
+    TASK_NAME = "Color Illusion"
+
+    def __init__(self):
         self._dataset = None
 
     def _get_dataset(self):
@@ -36,7 +37,7 @@ class ColorBenchDataLoader:
         items = []
         for idx, row in enumerate(ds):
             row_task = row.get("task", "")
-            if self.task_filter.lower() in row_task.lower():
+            if row_task.strip().lower() == self.TASK_NAME.lower():
                 img = row.get("image")
                 if isinstance(img, bytes):
                     img = Image.open(io.BytesIO(img)).convert("RGB")
@@ -53,7 +54,7 @@ class ColorBenchDataLoader:
                     "answer": row["answer"],
                     "image": img,
                 })
-        print(f"[Data Loader] Found {len(items)} instances for task filter '{self.task_filter}'.")
+        print(f"[Data Loader] Found {len(items)} Color Illusion instances.")
         return items
 
     def create_or_load_splits(
@@ -72,7 +73,7 @@ class ColorBenchDataLoader:
         than silently reusing an old cached split.
         """
         os.makedirs(splits_dir, exist_ok=True)
-        clean_task = self.task_filter.lower().replace(" ", "_")
+        clean_task = self.TASK_NAME.lower().replace(" ", "_")
         # Include sizes in filename so num_adaptation=50/num_eval=30 gets its
         # own cache entry and never collides with an old num_adaptation=10 file.
         split_file = os.path.join(
@@ -107,7 +108,7 @@ class ColorBenchDataLoader:
         eval_items = shuffled_items[num_adaptation:num_adaptation + num_eval]
 
         split_meta = {
-            "task": self.task_filter,
+            "task": self.TASK_NAME,
             "seed": seed,
             "total_task_items": len(all_items),
             "adaptation_count": len(adapt_items),

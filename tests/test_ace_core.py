@@ -9,7 +9,7 @@ from core.base import BaseAgent
 class TestACECore(unittest.TestCase):
 
     def test_playbook_add_and_deduplicate(self):
-        pb = Playbook(task="Color Mimicry")
+        pb = Playbook(task="Color Illusion")
         self.assertTrue(pb.is_empty())
 
         # Add initial bullet
@@ -49,8 +49,8 @@ class TestACECore(unittest.TestCase):
 
         # Add distinct bullet
         b4 = pb.add_bullet(
-            category="counting_rules",
-            content="When counting objects, explicitly verify if zero targets are present in the region.",
+            category="procedural_inspection",
+            content="Compare target-patch luminance after isolating each patch from the surrounding background.",
             source_step=4,
         )
         self.assertIsNotNone(b4)
@@ -173,7 +173,7 @@ class TestACECore(unittest.TestCase):
         self.assertEqual(QwenSolver._parse_option_letter("(D)", choices=choices), "(D)")
 
     def test_compact_playbook_prompt_budget(self):
-        pb = Playbook(task="Color Mimicry")
+        pb = Playbook(task="Color Illusion")
         # Add 6 distinct bullets with varying helpful/harmful scores
         contents = [
             "Inspect morphological contours and anatomical symmetry to detect camouflaged subjects.",
@@ -208,7 +208,7 @@ class TestACECore(unittest.TestCase):
         self.assertNotIn(b_ids[3], prompt_text)  # excluded due to net negative utility
 
     def test_tool_policy_and_cumulative_stats(self):
-        pb = Playbook(task="Color Recognition")
+        pb = Playbook(task="Color Illusion")
 
         tool_id = pb.add_bullet(
             category="tool_policy",
@@ -232,6 +232,32 @@ class TestACECore(unittest.TestCase):
 
         prompt_text = pb.format_for_prompt()
         self.assertIn("Use the measurement tool", prompt_text)
+
+    def test_strict_verifier_requires_a_real_gain(self):
+        from core.illusion_router import SurrogateVerifier
+
+        class FakeSolver:
+            def solve(self, image, question, choices, mode, skill=None):
+                # The candidate rule changes this deterministic probe answer.
+                return {"prediction": "(A)" if skill and "validated procedure" in skill else "(B)"}
+
+        verifier = SurrogateVerifier(FakeSolver())
+        pb = Playbook(task="Color Illusion")
+        probe = [{"image": None, "question": "Do A and B match?", "choices": ["yes", "no"], "answer": "(A)"}]
+        candidate = {
+            "category": "procedural_inspection",
+            "content": "Use the validated procedure to compare the isolated target patches.",
+            "refines_bullet_id": None,
+        }
+        accepted, diag = verifier.should_commit_candidate(
+            candidate=candidate,
+            playbook=pb,
+            reflection={"helpful_bullet_ids": [], "harmful_bullet_ids": []},
+            probe_items=probe,
+            step_index=1,
+        )
+        self.assertTrue(accepted)
+        self.assertEqual(diag["correct_gain"], 1)
 
 
 if __name__ == "__main__":

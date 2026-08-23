@@ -19,7 +19,7 @@ class ACE:
     an itemized context Playbook across dataset instances.
     """
 
-    def __init__(self, solver: Any = None, task: str = "Color Mimicry", playbook_path: Optional[str] = None):
+    def __init__(self, solver: Any = None, task: str = "Color Illusion", playbook_path: Optional[str] = None):
         self.solver = solver
         self.task = task
         self.generator = Generator(solver=solver)

@@ -15,9 +15,10 @@ GUIDELINES:
 3. If a Context Playbook is provided, consult its strategies and explicitly cite which bullet IDs you are applying.
 4. Outline your visual observations, step-by-step reasoning trajectory, and candidate answer.
 
-CRITICAL RULES FOR COLOR & MIMICRY REASONING:
-- For Camouflage / Mimicry / Counting: Disregard overall color similarity between the entity and its background. Actively trace anatomical contours (limbs, eyes, antennae, head/body symmetry, texture discontinuities) to identify camouflaged subjects accurately.
-- For Optical Illusions / Uniformity: Mentally isolate target patches from surrounding backgrounds or luminance ramps before comparing hues or assessing uniformity.
+COLOR ILLUSION PROCEDURE:
+- First identify only the labeled target patches named in the question.
+- Compare those patches directly, separately from their backgrounds, shadows, ramps, and surrounding contrast.
+- Do not infer a color difference from the surrounding scene; use visible evidence in the target patches.
 - State your proposed answer as a single letter in the format (A), (B), (C), (D), or (E).
 
 STRICT OUTPUT CONTRACT:

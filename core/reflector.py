@@ -134,9 +134,29 @@ class Reflector(BaseAgent):
                     "refines_bullet_id": ref_id,
                 })
 
+        # A model cannot reliably infer causal credit for bullets it did not cite.
+        # Restrict utility updates to the trajectory's explicit citations and do
+        # not turn an accidental correct answer into a new playbook rule.
+        valid_bullet_ids = set(playbook.bullets) if playbook else set()
+        used_ids = trajectory.get("used_bullet_ids", [])
+        if not isinstance(used_ids, list):
+            used_ids = []
+        used_ids = {str(b).strip() for b in used_ids if str(b).strip() in valid_bullet_ids}
+
+        raw_helpful = raw_result.get("helpful_bullet_ids", [])
+        raw_harmful = raw_result.get("harmful_bullet_ids", [])
+        if not isinstance(raw_helpful, list):
+            raw_helpful = []
+        if not isinstance(raw_harmful, list):
+            raw_harmful = []
+
+        is_correct = ground_truth is not None and solver_prediction.strip().upper() == ground_truth.strip().upper()
+        helpful_ids = [str(b).strip() for b in raw_helpful if str(b).strip() in used_ids] if is_correct else []
+        harmful_ids = [str(b).strip() for b in raw_harmful if str(b).strip() in used_ids] if not is_correct else []
+
         return {
             "critique": raw_result.get("critique", ""),
-            "helpful_bullet_ids": raw_result.get("helpful_bullet_ids", []),
-            "harmful_bullet_ids": raw_result.get("harmful_bullet_ids", []),
-            "delta_candidates": clean_cands,
+            "helpful_bullet_ids": helpful_ids,
+            "harmful_bullet_ids": harmful_ids,
+            "delta_candidates": clean_cands[:1] if not is_correct else [],
         }

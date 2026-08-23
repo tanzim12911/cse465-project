@@ -11,7 +11,7 @@ Your role is to review candidate delta bullets proposed by the Reflector and pro
 GUIDELINES:
 1. Ensure the candidate strategy is clear, concise, and generalizable across visual reasoning tasks.
 2. Filter out task-specific noise or over-fitted statements.
-3. Group into appropriate functional categories: visual_attention, boundary_verification, counting_rules, general_strategy.
+3. Group into appropriate functional categories: procedural_inspection, confounder_handling, task_specific.
 
 Respond ONLY in valid JSON matching this schema:
 {

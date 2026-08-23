@@ -144,7 +144,6 @@ class ACEIllusion:
 
         # Step 3: Surrogate Verifier — filter delta candidates before curation
         probe_items = self._probe_items.get(subtype, [])
-        current_playbook_text = playbook.format_for_prompt() if not playbook.is_empty() else ""
         verified_candidates = []
         verifier_reports = []
 
@@ -154,19 +153,20 @@ class ACEIllusion:
             if not content:
                 continue
 
-            should_add, diag = self.verifier.should_add_bullet(
-                candidate_content=content,
-                candidate_category=category,
-                current_playbook_text=current_playbook_text,
+            should_add, diag = self.verifier.should_commit_candidate(
+                candidate=cand,
+                playbook=playbook,
+                reflection=reflection,
                 probe_items=probe_items,
+                step_index=step_index,
             )
             verifier_reports.append({"candidate": content, "verdict": should_add, "diag": diag})
 
             if should_add:
                 verified_candidates.append(cand)
             else:
-                print(f"[ACEIllusion] Surrogate rejected bullet (subtype={subtype}, "
-                      f"delta={diag['delta']:.2f}): {content[:60]}...")
+                print(f"[ACEIllusion] Rejected candidate (subtype={subtype}, "
+                      f"reason={diag['reason']}): {content[:60]}...")
 
         # Replace candidates with only verified ones before Curator sees them
         filtered_reflection = dict(reflection)
