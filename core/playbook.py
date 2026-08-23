@@ -17,6 +17,7 @@ class PlaybookBullet:
     harmful_count: int = 0
     refinement_count: int = 0
     source_step: Optional[int] = None
+    kind: str = "strategy"
 
     def is_high_utility(self) -> bool:
         """Bullet has a strong positive history warranting extra protection.
@@ -74,6 +75,12 @@ class Playbook:
         self.version: int = 1
         self.bullets: Dict[str, PlaybookBullet] = {}
         self._next_id_counter: int = 1
+        self.tool_usage: Dict[str, int] = {
+            "used_total": 0,
+            "used_correct": 0,
+            "skipped_total": 0,
+            "skipped_correct": 0,
+        }
 
     def is_empty(self) -> bool:
         return len(self.bullets) == 0
@@ -90,6 +97,7 @@ class Playbook:
         bullet_id: Optional[str] = None,
         dedup_threshold: float = 0.65,
         reinforce_on_dedup: bool = False,
+        bullet_kind: Optional[str] = None,
     ) -> Optional[str]:
         """
         Add a new bullet to the playbook if not duplicate.
@@ -115,6 +123,7 @@ class Playbook:
             bullet_id = f"{prefix}-{self._next_id_counter:03d}"
             self._next_id_counter += 1
 
+        bullet_kind_clean = (bullet_kind or ("tool" if category.strip().lower() == "tool_policy" else "strategy")).strip().lower()
         bullet = PlaybookBullet(
             bullet_id=bullet_id,
             category=category.strip().lower(),
@@ -123,6 +132,7 @@ class Playbook:
             harmful_count=0,
             refinement_count=0,
             source_step=source_step,
+            kind=bullet_kind_clean,
         )
         self.bullets[bullet_id] = bullet
         self.version += 1
@@ -182,6 +192,21 @@ class Playbook:
         """Return list of bullet IDs that are currently suppressed due to net negative utility."""
         return [b.bullet_id for b in self.bullets.values() if b.is_suppressed()]
 
+    def record_tool_usage(self, tool_used: bool, correct: bool):
+        """Track cumulative tool-use outcomes without changing the live playbook context."""
+        if tool_used:
+            self.tool_usage["used_total"] += 1
+            if correct:
+                self.tool_usage["used_correct"] += 1
+        else:
+            self.tool_usage["skipped_total"] += 1
+            if correct:
+                self.tool_usage["skipped_correct"] += 1
+
+    def get_tool_usage_summary(self) -> Dict[str, int]:
+        """Return a compact cumulative summary of tool-use accuracy by outcome group."""
+        return dict(self.tool_usage)
+
     def format_for_prompt(self, max_active_bullets: int = 4) -> str:
         """
         Render structured active context for inclusion in Generator or Solver prompt.
@@ -207,7 +232,17 @@ class Playbook:
         active_bullets = active_bullets[:max_active_bullets]
 
         lines = ["[ACE Context Playbook - Accumulated Domain Strategies]"]
-        
+
+        if self.tool_usage["used_total"] + self.tool_usage["skipped_total"] > 0:
+            used_acc = (self.tool_usage["used_correct"] / self.tool_usage["used_total"]) if self.tool_usage["used_total"] else 0.0
+            skipped_acc = (self.tool_usage["skipped_correct"] / self.tool_usage["skipped_total"]) if self.tool_usage["skipped_total"] else 0.0
+            lines.append(
+                "\n# Tool Usage Signal\n"
+                f"- Tool used: {self.tool_usage['used_correct']}/{self.tool_usage['used_total']} correct ({used_acc:.2f})\n"
+                f"- Tool skipped: {self.tool_usage['skipped_correct']}/{self.tool_usage['skipped_total']} correct ({skipped_acc:.2f})\n"
+                "- Treat this as directional only until both groups exceed a meaningful sample count."
+            )
+
         # Group by category
         categories: Dict[str, List[PlaybookBullet]] = {}
         for b in active_bullets:
@@ -216,8 +251,9 @@ class Playbook:
         for cat, b_list in categories.items():
             lines.append(f"\n# Category: {cat.replace('_', ' ').title()}")
             for b in b_list:
+                kind_prefix = "[tool]" if getattr(b, "kind", "strategy") == "tool" else "[strategy]"
                 stats = f"[+ {b.helpful_count}/- {b.harmful_count}]" if (b.helpful_count or b.harmful_count) else ""
-                lines.append(f"- [{b.bullet_id}] {b.content} {stats}".strip())
+                lines.append(f"- {kind_prefix} [{b.bullet_id}] {b.content} {stats}".strip())
 
         return "\n".join(lines)
 
@@ -245,6 +281,7 @@ class Playbook:
             "version": self.version,
             "next_id_counter": self._next_id_counter,
             "bullets": {k: b.to_dict() for k, b in self.bullets.items()},
+            "tool_usage": dict(self.tool_usage),
         }
 
     @classmethod
@@ -252,6 +289,12 @@ class Playbook:
         pb = cls(task=data.get("task", "general"))
         pb.version = int(data.get("version", 1))
         pb._next_id_counter = int(data.get("next_id_counter", 1))
+        pb.tool_usage = {
+            "used_total": int(data.get("tool_usage", {}).get("used_total", 0)),
+            "used_correct": int(data.get("tool_usage", {}).get("used_correct", 0)),
+            "skipped_total": int(data.get("tool_usage", {}).get("skipped_total", 0)),
+            "skipped_correct": int(data.get("tool_usage", {}).get("skipped_correct", 0)),
+        }
         bullets_data = data.get("bullets", {})
         for k, b_data in bullets_data.items():
             pb.bullets[k] = PlaybookBullet.from_dict(b_data)

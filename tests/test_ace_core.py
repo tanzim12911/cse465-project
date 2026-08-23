@@ -207,6 +207,32 @@ class TestACECore(unittest.TestCase):
         self.assertIn(b_ids[2], prompt_text)
         self.assertNotIn(b_ids[3], prompt_text)  # excluded due to net negative utility
 
+    def test_tool_policy_and_cumulative_stats(self):
+        pb = Playbook(task="Color Recognition")
+
+        tool_id = pb.add_bullet(
+            category="tool_policy",
+            content="Use the measurement tool when choices are visually similar and the target region is ambiguous.",
+            source_step=1,
+            bullet_kind="tool",
+        )
+        self.assertIsNotNone(tool_id)
+        self.assertEqual(pb.bullets[tool_id].kind, "tool")
+
+        # tool usage should accumulate even when not yet added to the live set
+        pb.record_tool_usage(tool_used=True, correct=True)
+        pb.record_tool_usage(tool_used=False, correct=False)
+        pb.record_tool_usage(tool_used=True, correct=False)
+
+        summary = pb.get_tool_usage_summary()
+        self.assertEqual(summary["used_total"], 2)
+        self.assertEqual(summary["used_correct"], 1)
+        self.assertEqual(summary["skipped_total"], 1)
+        self.assertEqual(summary["skipped_correct"], 0)
+
+        prompt_text = pb.format_for_prompt()
+        self.assertIn("Use the measurement tool", prompt_text)
+
 
 if __name__ == "__main__":
     unittest.main()

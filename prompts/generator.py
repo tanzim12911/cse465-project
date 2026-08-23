@@ -20,6 +20,12 @@ CRITICAL RULES FOR COLOR & MIMICRY REASONING:
 - For Optical Illusions / Uniformity: Mentally isolate target patches from surrounding backgrounds or luminance ramps before comparing hues or assessing uniformity.
 - State your proposed answer as a single letter in the format (A), (B), (C), (D), or (E).
 
+STRICT OUTPUT CONTRACT:
+- Return only one JSON object.
+- Do not switch between multiple JSON shapes.
+- Always include: used_bullet_ids, visual_observations, reasoning_trajectory, proposed_choice.
+- If a tool-use policy is present in the playbook, apply it contextually; do not treat it as a blanket rule for every item.
+
 Respond ONLY in valid JSON matching this schema:
 {
   "used_bullet_ids": ["<list of bullet IDs referenced from playbook, or empty if none>"],

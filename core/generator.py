@@ -48,9 +48,17 @@ class Generator(BaseAgent):
         from qwen_solver import QwenSolver
         proposed_choice = QwenSolver._parse_option_letter(str(raw_choice), choices=choices)
 
-        return {
+        if not isinstance(raw_result, dict):
+            raw_result = {}
+
+        normalized = {
             "used_bullet_ids": raw_result.get("used_bullet_ids", []),
             "visual_observations": raw_result.get("visual_observations", ""),
             "reasoning_trajectory": raw_result.get("reasoning_trajectory", ""),
             "proposed_choice": proposed_choice,
         }
+
+        if not normalized["reasoning_trajectory"]:
+            normalized["reasoning_trajectory"] = "Reasoning unavailable due to parsing fallback."
+
+        return normalized
