@@ -57,7 +57,8 @@ class ACEIllusion:
             self.manager = SubtypePlaybookManager.load_all(playbook_base_path, task=task)
         else:
             self.manager = SubtypePlaybookManager(task=task)
-            print(f"[ACEIllusion] Initialized 3 empty subtype playbooks for task: {task}")
+            self._seed_comparison_playbook()
+            print(f"[ACEIllusion] Initialized 3 subtype playbooks for task: {task}")
 
         # Per-subtype probe sets (populated by set_probe_items before adaptation)
         self._probe_items: Dict[str, List[Dict[str, Any]]] = {
@@ -246,3 +247,23 @@ class ACEIllusion:
             "total_bullets": len(playbook.bullets),
             "subtype_summary": self.manager.summary(),
         }
+
+    def _seed_comparison_playbook(self):
+        from core.illusion_router import SUBTYPE_COMPARISON
+        seed_bullets = [
+            (
+                "Compare target-patch mean luminance after isolating each patch from the surrounding background.",
+                "procedural_inspection",
+            ),
+            (
+                "Account for illumination gradients and shadow boundaries that can shift perceived hue.",
+                "confounder_handling",
+            ),
+            (
+                "Check whether a global color cast affects both target regions equally.",
+                "confounder_handling",
+            ),
+        ]
+        pb = self.manager.playbooks[SUBTYPE_COMPARISON]
+        for content, category in seed_bullets:
+            pb.add_bullet(category=category, content=content, source_step=None)

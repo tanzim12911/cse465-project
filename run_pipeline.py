@@ -44,6 +44,10 @@ def parse_args():
         help="Random seed for reproducible split generation",
     )
     parser.add_argument(
+        "--iterations", type=int, default=1,
+        help="Number of passes over the adaptation split (multi-pass adaptation)",
+    )
+    parser.add_argument(
         "--model_id", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct",
         help="HuggingFace Model ID or alias (e.g., '7b', '3b', 'Qwen/Qwen2.5-VL-7B-Instruct', 'Qwen/Qwen2.5-VL-3B-Instruct')",
     )
@@ -114,6 +118,7 @@ def run_ace_pipeline(
     task_name: str,
     dataset_tag: str,
     output_dir: str,
+    num_iterations: int = 1,
 ):
     """Execute complete ACE Adaptation + Held-Out Evaluation."""
     clean_task = f"{dataset_tag}_{task_name.lower().replace(' ', '_')}"
@@ -137,21 +142,23 @@ def run_ace_pipeline(
     # Phase 1: ACE Adaptation on Adaptation Split
     # ---------------------------------------------------------
     print("\n" + "=" * 70)
-    print(f"[ACE Phase 1: Adaptation] Adapting on {len(adapt_items)} samples...")
+    print(f"[ACE Phase 1: Adaptation] Adapting on {len(adapt_items)} samples x {num_iterations} iteration(s)...")
     if not is_illusion_mode:
         print(f"Initial Playbook Bullets: {len(ace_system.playbook.bullets)}")
     print("=" * 70)
 
     adapt_logger = IncrementalLogger(adapt_log_path)
-    for step_i, item in enumerate(adapt_items):
-        idx = item["idx"]
-        if idx in adapt_logger.processed_indices:
-            print(f"\n[ACE Adapt Step {step_i + 1}/{len(adapt_items)}] idx={idx} — already processed, skipping.")
-            continue
+    for iteration in range(num_iterations):
+        print(f"\n[ACE Adaptation Iteration {iteration + 1}/{num_iterations}]")
+        for step_i, item in enumerate(adapt_items):
+            idx = item["idx"]
+            if iteration == 0 and idx in adapt_logger.processed_indices:
+                print(f"\n[ACE Adapt Step {step_i + 1}/{len(adapt_items)}] idx={idx} — already processed, skipping.")
+                continue
 
-        print(f"\n[ACE Adapt Step {step_i + 1}/{len(adapt_items)}] idx={idx} | Q: {item['question']}")
+            print(f"\n[ACE Adapt Step {step_i + 1}/{len(adapt_items)}] idx={idx} | Q: {item['question']}")
 
-        adapt_record = ace_system.adapt_on_example(
+            adapt_record = ace_system.adapt_on_example(
             question=item["question"],
             choices=item["choices"],
             image=item["image"],
@@ -184,6 +191,7 @@ def run_ace_pipeline(
 
         log_entry = {
             "step": step_i + 1,
+            "iteration": iteration + 1,
             "idx": idx,
             "id": item["id"],
             "task": task_name,
@@ -339,6 +347,7 @@ def main():
             task_name=task_name,
             dataset_tag=loader.output_tag,
             output_dir=args.output_dir,
+            num_iterations=args.iterations,
         )
 
     print("\n" + "=" * 70)

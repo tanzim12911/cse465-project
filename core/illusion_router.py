@@ -33,7 +33,7 @@ class SurrogateVerifier:
     same-subtype validation probe set.
     """
 
-    MAX_PROBE_SIZE = 6
+    MAX_PROBE_SIZE = 8
     MIN_CORRECT_GAIN = 1
 
     def __init__(self, solver: Any):
