@@ -21,7 +21,11 @@ from qwen_solver import QwenSolver
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="CSE465 ColorBench Color Illusion Pipeline")
+    parser = argparse.ArgumentParser(description="Color Illusion pipeline for ColorBench or RCID")
+    parser.add_argument(
+        "--dataset", choices=["colorbench", "rcid"], default="colorbench",
+        help="Color-illusion dataset to run. Splits and result names remain source-specific.",
+    )
     parser.add_argument(
         "--mode", type=str, default="ace",
         choices=["baseline", "ace", "both"],
@@ -108,10 +112,11 @@ def run_ace_pipeline(
     adapt_items: list,
     eval_items: list,
     task_name: str,
+    dataset_tag: str,
     output_dir: str,
 ):
     """Execute complete ACE Adaptation + Held-Out Evaluation."""
-    clean_task = task_name.lower().replace(" ", "_")
+    clean_task = f"{dataset_tag}_{task_name.lower().replace(' ', '_')}"
     os.makedirs(output_dir, exist_ok=True)
 
     playbook_json_path = os.path.join(output_dir, f"playbook_{clean_task}.json")
@@ -294,23 +299,23 @@ def run_ace_pipeline(
 
 def main():
     args = parse_args()
-    task_name = "Color Illusion"
+    loader = ColorIllusionDataLoader(dataset=args.dataset)
+    task_name = loader.task_name
 
     print("=" * 70)
     print(f"CSE465 ColorBench — ACE Architecture Pipeline")
-    print(f"Task: {task_name} | Mode: {args.mode} | Seed: {args.seed}")
+    print(f"Dataset: {args.dataset} | Task: {task_name} | Mode: {args.mode} | Seed: {args.seed}")
     print(f"Adaptation Samples: {args.num_adaptation} | Held-Out Eval Samples: {args.num_eval}")
     print("=" * 70)
 
     # 1. Load Data and Deterministic Splits
-    loader = ColorIllusionDataLoader()
     adapt_items, eval_items = loader.create_or_load_splits(
         num_adaptation=args.num_adaptation,
         num_eval=args.num_eval,
         seed=args.seed,
     )
 
-    clean_task = task_name.lower().replace(" ", "_")
+    clean_task = f"{loader.output_tag}_{task_name.lower().replace(' ', '_')}"
     baseline_eval_path = os.path.join(args.output_dir, f"results_{clean_task}_baseline_heldout.jsonl")
     baseline_adapt_path = os.path.join(args.output_dir, f"results_{clean_task}_baseline_adaptation.jsonl")
 
@@ -332,6 +337,7 @@ def main():
             adapt_items=adapt_items,
             eval_items=eval_items,
             task_name=task_name,
+            dataset_tag=loader.output_tag,
             output_dir=args.output_dir,
         )
 

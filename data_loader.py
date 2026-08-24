@@ -1,12 +1,14 @@
-"""Data loader, deterministic split creator, and crash-resilient Incremental Logger for ColorBench."""
+"""Dataset adapters, deterministic splits, and incremental result logging."""
 
-import os
-import json
 import io
+import json
+import os
 import random
+from typing import Any, Dict, List, Set, Tuple
+
 from PIL import Image
-from typing import Dict, List, Any, Generator, Set, Tuple, Optional
-from config import DATASET_NAME
+
+from config import COLORBENCH_DATASET, RCID_DATASET
 
 try:
     from datasets import load_dataset
@@ -16,45 +18,100 @@ except ImportError:
 
 
 class ColorIllusionDataLoader:
-    """Streams only the Color Illusion subset of ColorBench."""
+    """Load Color Illusion examples from ColorBench or RCID.
 
-    TASK_NAME = "Color Illusion"
+    RCID's public Hugging Face release is an image-folder dataset with a
+    class label rather than a VQA question. The adapter turns each label into
+    a binary colour-comparison question. It does not mix RCID with ColorBench:
+    each source has a separate split cache and separate output name.
+    """
 
-    def __init__(self):
+    DATASETS = {
+        "colorbench": COLORBENCH_DATASET,
+        "rcid": RCID_DATASET,
+    }
+
+    def __init__(self, dataset: str = "colorbench"):
+        self.dataset_key = dataset.strip().lower()
+        if self.dataset_key not in self.DATASETS:
+            raise ValueError(f"Unsupported dataset '{dataset}'. Choose: {', '.join(self.DATASETS)}")
+        self.dataset_name = self.DATASETS[self.dataset_key]
+        self.task_name = "Color Illusion" if self.dataset_key == "colorbench" else "RCID Color Illusion"
         self._dataset = None
+
+    @property
+    def output_tag(self) -> str:
+        return self.dataset_key
 
     def _get_dataset(self):
         if not HAS_DATASETS:
             raise RuntimeError("Install datasets: pip install datasets")
         if self._dataset is None:
-            print(f"[Data Loader] Loading {DATASET_NAME} split='test' from HuggingFace...")
-            self._dataset = load_dataset(DATASET_NAME, split="test")
+            print(f"[Data Loader] Loading {self.dataset_name} split='test' from HuggingFace...")
+            self._dataset = load_dataset(self.dataset_name, split="test")
         return self._dataset
 
-    def get_all_task_items(self) -> List[Dict[str, Any]]:
-        """Return all instances belonging to this task."""
-        ds = self._get_dataset()
+    @staticmethod
+    def _image(row: Dict[str, Any]) -> Image.Image:
+        image = row.get("image")
+        if isinstance(image, bytes):
+            return Image.open(io.BytesIO(image)).convert("RGB")
+        if isinstance(image, Image.Image):
+            return image.convert("RGB")
+        raise ValueError("Dataset row has no usable image.")
+
+    def _colorbench_items(self, ds) -> List[Dict[str, Any]]:
+        items = []
+        for fallback_idx, row in enumerate(ds):
+            if row.get("task", "").strip().lower() != "color illusion":
+                continue
+            items.append({
+                "idx": row.get("idx", fallback_idx),
+                "id": row.get("id", fallback_idx),
+                "task": self.task_name,
+                "type": row.get("type", ""),
+                "question": row["question"],
+                "choices": row["choices"],
+                "answer": row["answer"],
+                "image": self._image(row),
+            })
+        return items
+
+    @staticmethod
+    def _rcid_label_name(ds, label: Any) -> str:
+        feature = ds.features.get("label")
+        if feature is not None and hasattr(feature, "int2str"):
+            return feature.int2str(int(label))
+        return str(label)
+
+    def _rcid_items(self, ds) -> List[Dict[str, Any]]:
         items = []
         for idx, row in enumerate(ds):
-            row_task = row.get("task", "")
-            if row_task.strip().lower() == self.TASK_NAME.lower():
-                img = row.get("image")
-                if isinstance(img, bytes):
-                    img = Image.open(io.BytesIO(img)).convert("RGB")
-                elif not isinstance(img, Image.Image):
-                    img = Image.new("RGB", (224, 224), color="gray")
+            label_name = self._rcid_label_name(ds, row.get("label", "")).lower()
+            if "different" in label_name:
+                answer = "(A)"
+            elif "same" in label_name:
+                answer = "(B)"
+            else:
+                raise ValueError(
+                    f"Unsupported RCID label '{label_name}'. Expected a label containing 'same' or 'different'."
+                )
+            items.append({
+                "idx": idx,
+                "id": idx,
+                "task": self.task_name,
+                "type": label_name,
+                "question": "Do the two target regions appear to have different colors?",
+                "choices": ["Yes, they appear different", "No, they appear the same"],
+                "answer": answer,
+                "image": self._image(row),
+            })
+        return items
 
-                items.append({
-                    "idx": row.get("idx", idx),
-                    "id": row.get("id", idx),
-                    "task": row_task,
-                    "type": row.get("type", ""),
-                    "question": row["question"],
-                    "choices": row["choices"],
-                    "answer": row["answer"],
-                    "image": img,
-                })
-        print(f"[Data Loader] Found {len(items)} Color Illusion instances.")
+    def get_all_task_items(self) -> List[Dict[str, Any]]:
+        ds = self._get_dataset()
+        items = self._colorbench_items(ds) if self.dataset_key == "colorbench" else self._rcid_items(ds)
+        print(f"[Data Loader] Found {len(items)} {self.task_name} instances.")
         return items
 
     def create_or_load_splits(
@@ -64,64 +121,43 @@ class ColorIllusionDataLoader:
         seed: int = 42,
         splits_dir: str = "./splits",
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """
-        Create or load deterministic adaptation and held-out evaluation splits.
-        Saves split metadata to JSON to guarantee identical instances across runs.
-
-        The cache key encodes seed + num_adaptation + num_eval so that changing
-        the split sizes always produces a fresh, correctly-sized split rather
-        than silently reusing an old cached split.
-        """
         os.makedirs(splits_dir, exist_ok=True)
-        clean_task = self.TASK_NAME.lower().replace(" ", "_")
-        # Include sizes in filename so num_adaptation=50/num_eval=30 gets its
-        # own cache entry and never collides with an old num_adaptation=10 file.
         split_file = os.path.join(
-            splits_dir,
-            f"{clean_task}_seed{seed}_a{num_adaptation}_e{num_eval}.json",
+            splits_dir, f"{self.output_tag}_color_illusion_seed{seed}_a{num_adaptation}_e{num_eval}.json"
         )
-
         all_items = self.get_all_task_items()
-        if len(all_items) < (num_adaptation + num_eval):
-            # Scale proportionally if task has fewer items
-            total = len(all_items)
-            num_adaptation = min(num_adaptation, max(1, total // 3))
-            num_eval = total - num_adaptation
+        if len(all_items) < num_adaptation + num_eval:
+            num_adaptation = min(num_adaptation, max(1, len(all_items) // 3))
+            num_eval = len(all_items) - num_adaptation
 
         if os.path.exists(split_file):
             print(f"[Data Loader] Loading existing split from {split_file}...")
-            with open(split_file, "r", encoding="utf-8") as f:
-                split_meta = json.load(f)
-            adapt_indices = set(split_meta["adaptation_indices"])
-            eval_indices = set(split_meta["evaluation_indices"])
-            
-            adapt_items = [it for it in all_items if it["idx"] in adapt_indices]
-            eval_items = [it for it in all_items if it["idx"] in eval_indices]
-            return adapt_items, eval_items
+            with open(split_file, "r", encoding="utf-8") as handle:
+                metadata = json.load(handle)
+            adaptation_indices = set(metadata["adaptation_indices"])
+            evaluation_indices = set(metadata["evaluation_indices"])
+            return (
+                [item for item in all_items if item["idx"] in adaptation_indices],
+                [item for item in all_items if item["idx"] in evaluation_indices],
+            )
 
-        print(f"[Data Loader] Creating new deterministic split (seed={seed}, adapt={num_adaptation}, eval={num_eval})...")
-        rng = random.Random(seed)
-        shuffled_items = list(all_items)
-        rng.shuffle(shuffled_items)
-
-        adapt_items = shuffled_items[:num_adaptation]
-        eval_items = shuffled_items[num_adaptation:num_adaptation + num_eval]
-
-        split_meta = {
-            "task": self.TASK_NAME,
-            "seed": seed,
-            "total_task_items": len(all_items),
-            "adaptation_count": len(adapt_items),
-            "evaluation_count": len(eval_items),
-            "adaptation_indices": [it["idx"] for it in adapt_items],
-            "evaluation_indices": [it["idx"] for it in eval_items],
-        }
-
-        with open(split_file, "w", encoding="utf-8") as f:
-            json.dump(split_meta, f, indent=2)
+        print(f"[Data Loader] Creating deterministic split (seed={seed}, adapt={num_adaptation}, eval={num_eval})...")
+        shuffled = list(all_items)
+        random.Random(seed).shuffle(shuffled)
+        adaptation, evaluation = shuffled[:num_adaptation], shuffled[num_adaptation:num_adaptation + num_eval]
+        with open(split_file, "w", encoding="utf-8") as handle:
+            json.dump({
+                "dataset": self.dataset_key,
+                "task": self.task_name,
+                "seed": seed,
+                "total_task_items": len(all_items),
+                "adaptation_count": len(adaptation),
+                "evaluation_count": len(evaluation),
+                "adaptation_indices": [item["idx"] for item in adaptation],
+                "evaluation_indices": [item["idx"] for item in evaluation],
+            }, handle, indent=2)
         print(f"[Data Loader] Saved split metadata to {split_file}.")
-
-        return adapt_items, eval_items
+        return adaptation, evaluation
 
 
 class IncrementalLogger:
@@ -133,25 +169,22 @@ class IncrementalLogger:
         self.processed_indices: Set[int] = self._get_processed_indices()
 
     def _get_processed_indices(self) -> Set[int]:
-        """Scan existing JSONL to find already-completed indices."""
         processed = set()
         if not os.path.exists(self.filepath):
             return processed
-        with open(self.filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        record = json.loads(line)
-                        if "idx" in record:
-                            processed.add(record["idx"])
-                    except json.JSONDecodeError:
-                        continue
+        with open(self.filepath, "r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                    if "idx" in record:
+                        processed.add(record["idx"])
+                except json.JSONDecodeError:
+                    continue
         if processed:
             print(f"[Logger] Resuming: {len(processed)} records already completed.")
         return processed
 
     def log_result(self, record: Dict[str, Any]):
-        """Append a single record immediately to disk."""
-        with open(self.filepath, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with open(self.filepath, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         self.processed_indices.add(record["idx"])

@@ -259,6 +259,29 @@ class TestACECore(unittest.TestCase):
         self.assertTrue(accepted)
         self.assertEqual(diag["correct_gain"], 1)
 
+    def test_rcid_adapter_creates_binary_color_comparison_items(self):
+        from data_loader import ColorIllusionDataLoader
+        from PIL import Image
+
+        class LabelFeature:
+            names = ["look_like_different", "look_like_same"]
+
+            def int2str(self, value):
+                return self.names[value]
+
+        class FakeDataset(list):
+            features = {"label": LabelFeature()}
+
+        loader = ColorIllusionDataLoader(dataset="rcid")
+        dataset = FakeDataset([
+            {"image": Image.new("RGB", (20, 20)), "label": 0},
+            {"image": Image.new("RGB", (20, 20)), "label": 1},
+        ])
+        loader._get_dataset = lambda: dataset
+        items = loader.get_all_task_items()
+        self.assertEqual([item["answer"] for item in items], ["(A)", "(B)"])
+        self.assertTrue(all(item["task"] == "RCID Color Illusion" for item in items))
+
 
 if __name__ == "__main__":
     unittest.main()

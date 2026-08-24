@@ -20,10 +20,10 @@ QUANTIZATION_CONFIG = {
 # Token budget for each agent role.
 # Generator & Reflector produce structured JSON — 384 tokens comfortably
 # fits a full trajectory + 2 delta candidates even with a rich playbook.
-# Solver only needs to emit a short answer, so 512 is generous.
+# Solver calls (including validation probes) only need an option letter.
 GENERATOR_MAX_NEW_TOKENS = 384
 REFLECTOR_MAX_NEW_TOKENS = 384
-SOLVER_MAX_NEW_TOKENS = 512
+SOLVER_MAX_NEW_TOKENS = 64
 
 # Image resolution bounds to cap visual tokens and prevent attention OOM on T4
 MIN_PIXELS = 256 * 28 * 28
@@ -32,7 +32,8 @@ MAX_PIXELS = 1280 * 28 * 28
 # ==============================================================================
 # Dataset & Paths
 # ==============================================================================
-DATASET_NAME = "umd-zhou-lab/ColorBench"
+COLORBENCH_DATASET = "umd-zhou-lab/ColorBench"
+RCID_DATASET = "mao1207/RCID"
 DEFAULT_OUTPUT_DIR = "./results"
 
 # Default number of adaptation samples and iterative prompting rounds
