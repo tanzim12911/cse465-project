@@ -5,12 +5,24 @@ import re
 from typing import Dict, Any, Optional
 from PIL import Image
 
+from .tools import ColorAnalysisTool
+
 
 class BaseAgent:
     """Base agent providing robust model calling and structured JSON parsing."""
 
     def __init__(self, solver: Any = None):
         self.solver = solver
+
+    def _get_color_stats_text(self, image: Optional[Image.Image], label: str = "image") -> Optional[str]:
+        if image is None:
+            return None
+        try:
+            tool = ColorAnalysisTool()
+            return tool.format_for_prompt(image, label=label)
+        except Exception as e:
+            print(f"[BaseAgent Warning] Color analysis failed: {e}")
+            return None
 
     def _call_model(
         self,

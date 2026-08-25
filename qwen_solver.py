@@ -24,6 +24,8 @@ try:
 except ImportError:
     process_vision_info = None
 
+from core.tools import ColorAnalysisTool
+
 
 MODEL_ALIASES = {
     "7b": "Qwen/Qwen2.5-VL-7B-Instruct",
@@ -87,9 +89,21 @@ class QwenSolver:
             f"({labels[i]}) {c}" for i, c in enumerate(choices)
         )
 
+        tool_text = None
+        if image is not None:
+            try:
+                tool_text = ColorAnalysisTool().format_for_prompt(image, label="input image")
+            except Exception as e:
+                print(f"[QwenSolver Warning] Color analysis failed: {e}")
+
         # Build prompt based on mode
+        prompt_parts = []
+        if tool_text:
+            prompt_parts.append(tool_text)
+            prompt_parts.append("\n" + "=" * 40 + "\n")
+
         if mode in ["ace", "adaptive_skills"] and skill:
-            prompt_text = (
+            prompt_parts.append(
                 f"Context Playbook:\n"
                 f"{skill}\n\n"
                 f"Question: {question}\n\n"
@@ -97,11 +111,13 @@ class QwenSolver:
                 f"Instructions: Apply the strategies from the Context Playbook above. Briefly state your visual observation in 1-2 sentences, then state your final selection strictly as 'Final Answer: (X)' where X is the single chosen option letter."
             )
         else:  # baseline — direct VQA
-            prompt_text = (
+            prompt_parts.append(
                 f"Question: {question}\n\n"
                 f"Choices:\n{options_text}\n\n"
                 f"Select the correct answer option directly as (A), (B), (C), (D), or (E)."
             )
+
+        prompt_text = "\n".join(prompt_parts)
 
         raw_text, prediction = self._generate(image, prompt_text, choices=choices)
         self.clear_memory()

@@ -7,6 +7,7 @@ from .reflector import Reflector
 from .curator import Curator
 from .illusion_router import classify_illusion_question, SurrogateVerifier
 from .subtype_playbook import SubtypePlaybookManager
+from .tools import ColorAnalysisTool
 
 __all__ = [
     "Playbook",
@@ -18,4 +19,5 @@ __all__ = [
     "classify_illusion_question",
     "SurrogateVerifier",
     "SubtypePlaybookManager",
+    "ColorAnalysisTool",
 ]

@@ -29,6 +29,10 @@ class Generator(BaseAgent):
             user_prompt_parts.append(playbook.format_for_prompt())
             user_prompt_parts.append("\n" + "=" * 40 + "\n")
 
+        tool_text = self._get_color_stats_text(image, label="input image")
+        if tool_text:
+            user_prompt_parts.append(tool_text + "\n" + "=" * 40 + "\n")
+
         user_prompt_parts.append(
             f"Question: {question}\nChoices:\n{options_text}\n\n"
             f"Analyze the image, reference any relevant playbook bullets, and provide your reasoning trajectory in JSON."
